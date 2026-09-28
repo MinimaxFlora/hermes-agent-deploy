@@ -1,0 +1,38 @@
+# =============================================================================
+# hermes-vps 无人值守部署配置示例
+# 用法:
+#   cp etc/hermes-vps.conf.example /etc/hermes-vps/hermes-vps.conf
+#   nano /etc/hermes-vps/hermes-vps.conf
+#   hermes-vps install --config /etc/hermes-vps/hermes-vps.conf --non-interactive --yes
+#
+# 说明:这是被 shell `source` 的文件,不是 YAML。
+#      值里不要写引号以外的空格;含空格请用 '单引号' 包起来。
+#      留空的项 = 保持默认行为;交互模式下会再问你一次。
+# =============================================================================
+
+# ---- 域名与证书(不配域名则只提供本机访问) ----
+HV_DOMAIN="hermes.example.com"      # 已解析到本机的 A 记录
+HV_ACME_EMAIL="admin@example.com"   # Let's Encrypt 通知邮箱
+# HV_ACME_CA=""                     # 想用测试 CA 可填:
+                                    # https://acme-staging-v02.api.letsencrypt.org/directory
+HV_SKIP_CADDY=0                     # 1 = 不装/不配 Caddy
+HV_SKIP_FIREWALL=0                  # 1 = 不动防火墙
+
+# ---- 模型提供商(id 见 hermes-vps model list) ----
+HV_MODEL_PROVIDER="deepseek"        # deepseek / openrouter / zai / alibaba / minimax-cn ...
+HV_MODEL_KEY="sk-xxxxxxxxxxxx"      # 对应提供商的 API Key
+HV_MODEL_NAME="deepseek-chat"       # 模型名;自定义端点必填
+# HV_MODEL_BASE_URL="http://127.0.0.1:8000/v1"   # 仅 HV_MODEL_PROVIDER=__custom__ 时需要
+
+# ---- 消息平台(逗号分隔,id 见 hermes-vps platform list) ----
+# 注意:weixin(个人微信)与 whatsapp 需要扫码,无人值守模式下会跳过并打印后续步骤,
+#      之后执行 `hermes-vps platform setup weixin` 在 SSH 里完成扫码即可。
+HV_PLATFORMS="telegram"             # 例: "qqbot,wecom,telegram,feishu"
+
+# ---- 面板与 API ----
+HV_WITH_API=1                       # 1 = 开启 /v1 OpenAI 兼容 API 并反代到域名下
+HV_DASH_USER="admin"                # 面板用户名(密码自动随机生成并写入凭据文件)
+
+# ---- 安装选项 ----
+HV_SKIP_BROWSER=0                   # 1 = 不安装浏览器工具(省 ~150MB+ 与系统依赖)
+                                    #     关闭后 agent 仍可联网搜索,只是不能开浏览器

@@ -1,0 +1,230 @@
+#!/usr/bin/env bash
+# =============================================================================
+# hermes-vps —— Hermes Agent VPS 一键部署 / 配置 / 运维 CLI
+#
+#   hermes-vps install                 一键部署(交互向导)
+#   hermes-vps install --config f.conf 无人值守部署(见 etc/hermes-vps.conf.example)
+#   hermes-vps menu                    打开交互式菜单
+# 其余子命令见 `hermes-vps help`。
+# =============================================================================
+
+# 必须 bash 运行(脚本里用了数组/[[ ]]等 bash 特性)
+if [ -z "${BASH_VERSION:-}" ]; then exec bash "$0" "$@"; fi
+if [ "${BASH_VERSINFO[0]}" -lt 4 ]; then
+    echo "需要 bash >= 4(当前 $BASH_VERSION)" >&2; exit 1
+fi
+
+set -Eeuo pipefail
+
+HV_SELF_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+export HV_SELF_DIR
+
+# shellcheck source=/dev/null
+source "${HV_SELF_DIR}/lib/common.sh"
+
+HV_INSTALLED_BIN="/usr/local/bin/hermes-vps"
+export HV_INSTALLED_BIN
+
+_hv_usage() {
+    cat <<'EOF'
+hermes-vps —— Hermes Agent VPS 一键部署与管理
+
+用法:
+  hermes-vps <命令> [参数]
+
+部署
+  install                        交互式一键部署(安装 → 面板 → 域名 → 平台)
+  install --config <file>        读取配置文件无人值守部署
+  install --domain d --email e --provider p --model m --platforms qq,weixin --yes
+  menu                           打开全屏菜单(whiptail)
+
+配置
+  model list|show|configure      模型提供商
+  platform list|status|configure <id>|setup <id>
+                                 消息平台(QQ/微信/企业微信/TG/飞书/钉钉/Slack…)
+  web show|password|api on|off   面板与 OpenAI 兼容 API
+  domain set <域名>|apply|status 域名、证书与反向代理(Caddy)
+  mirror probe|show              网络加速(GitHub / PyPI)探测与查看
+
+运维
+  service status|restart|stop|start|logs [gateway|dashboard]
+  status                         状态总览
+  doctor                         完整体检(含官方 hermes doctor)
+  logs <gateway|dashboard|caddy|install|hermes-install|agent|access>
+  backup create|list|restore     备份与恢复
+  update [--no-backup]           更新 Hermes 并重启服务
+  update --auto enable|disable|status
+  firewall setup                 防火墙只放行 SSH/80/443
+  uninstall                      卸载(逐项确认,先列后删)
+
+通用参数
+  -y, --yes              对所有确认问题回答"是"(危险操作仍需显式给出)
+  --non-interactive      全自动模式:不提问,缺失项用默认值/参数
+  --debug                打开 shell 调试输出
+  --no-color             关闭彩色输出
+  -v, --version          版本
+  -h, --help             本帮助
+
+示例
+  curl -fsSL https://raw.githubusercontent.com/<你的仓库>/main/install.sh | bash -s -- install
+  hermes-vps install --config /etc/hermes-vps/hermes-vps.conf
+EOF
+}
+
+_hv_parse_flags() {
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --domain)     HV_DOMAIN="${2:-}"; shift 2 ;;
+            --email)      HV_ACME_EMAIL="${2:-}"; shift 2 ;;
+            --acme-ca)    HV_ACME_CA="${2:-}"; shift 2 ;;
+            --provider)   HV_MODEL_PROVIDER="${2:-}"; shift 2 ;;
+            --key)        HV_MODEL_KEY="${2:-}"; shift 2 ;;
+            --model)      HV_MODEL_NAME="${2:-}"; shift 2 ;;
+            --base-url)   HV_MODEL_BASE_URL="${2:-}"; shift 2 ;;
+            --platforms)  HV_PLATFORMS="${2:-}"; shift 2 ;;
+            --with-api)   HV_WITH_API="${2:-1}"; shift 2 ;;
+            --skip-browser)     HV_SKIP_BROWSER=1; shift ;;
+            --skip-firewall)    HV_SKIP_FIREWALL=1; shift ;;
+            --skip-caddy)       HV_SKIP_CADDY=1; shift ;;
+            --no-backup)        HV_SKIP_BACKUP=1; shift ;;
+            --label)      HV_BACKUP_LABEL="${2:-auto}"; shift 2 ;;
+            --force)      HV_FORCE=1; shift ;;
+            *) shift ;;
+        esac
+    done
+    export HV_DOMAIN HV_ACME_EMAIL HV_ACME_CA HV_MODEL_PROVIDER HV_MODEL_KEY HV_MODEL_NAME
+    export HV_MODEL_BASE_URL HV_PLATFORMS HV_WITH_API HV_SKIP_BROWSER HV_SKIP_FIREWALL HV_SKIP_CADDY
+    export HV_FORCE
+}
+
+_hv_load_all() {
+    local m
+    for m in common ui detect deps mirror account hermes provider platform webui service caddy firewall backup lifecycle doctor deploy menu; do
+        [[ -f "${HV_SELF_DIR}/lib/${m}.sh" ]] || { echo "缺少模块 lib/${m}.sh" >&2; exit 1; }
+        # shellcheck source=/dev/null
+        source "${HV_SELF_DIR}/lib/${m}.sh"
+    done
+}
+
+main() {
+    local cmd="${1:-help}"; shift || true
+
+    # 通用参数优先(否则 install 的参数会被吞)
+    if [[ "$cmd" == "help" || "$cmd" == "--help" || "$cmd" == "-h" ]]; then _hv_usage; return 0; fi
+    if [[ "$cmd" == "version" || "$cmd" == "-v" || "$cmd" == "--version" ]]; then
+        echo "hermes-vps ${HV_VERSION}"; return 0
+    fi
+
+    _hv_load_all
+    hv_install_trap
+    export HV_NONINTERACTIVE HV_ASSUME_YES HV_DEBUG HV_NO_COLOR
+
+    case "$cmd" in
+        install|deploy)
+            _hv_parse_flags "$@"
+            # --config 支持:载入后作为默认值,命令行参数优先
+            local -a args=("$@")
+            local i=0
+            while [[ $i -lt ${#args[@]} ]]; do
+                if [[ "${args[$i]}" == "--config" ]]; then
+                    local cfg="${args[$((i+1))]:-}"
+                    [[ -f "$cfg" ]] || hv_die "配置文件不存在:$cfg"
+                    # shellcheck source=/dev/null
+                    . "$cfg"
+                    _hv_parse_flags "$@"   # 命令行参数再覆盖一次配置里的值
+                    hv_info "已载入配置:$cfg"
+                fi
+                i=$((i+1))
+            done
+            hv_deploy
+            ;;
+        menu)  hv_require_root; hv_menu_main ;;
+        model)
+            case "${1:-show}" in
+                list) hv_provider_list ;;
+                show) hv_provider_show ;;
+                configure|set) shift || true; _hv_parse_flags "$@"; hv_provider_configure "${1:-}" ;;
+                *) hv_die "用法: hermes-vps model list|show|configure [id]" ;;
+            esac
+            ;;
+        platform)
+            case "${1:-status}" in
+                list) hv_platform_list ;;
+                status) hv_platform_status ;;
+                configure) shift; hv_platform_configure "${1:-}" ;;
+                setup) shift; hv_platform_interactive_setup "${1:-}" ;;
+                *) hv_die "用法: hermes-vps platform list|status|configure <id>|setup <id>" ;;
+            esac
+            ;;
+        web)
+            case "${1:-show}" in
+                show) hv_dashboard_show_access; hv_apiserver_show_access ;;
+                password) hv_creds_save DASHBOARD_PASSWORD "$(hv_random 18)"; hv_dashboard_configure "$(hv_state_get DOMAIN "")"; hv_dashboard_show_access ;;
+                api)
+                    case "${2:-}" in on) hv_apiserver_configure on ;; off) hv_apiserver_configure off ;; *) hv_die "用法: hermes-vps web api on|off" ;; esac
+                    ;;
+                *) hv_die "用法: hermes-vps web show|password|api on|off" ;;
+            esac
+            ;;
+        domain)
+            case "${1:-status}" in
+                set)
+                    local d="${2:-}"; [[ -n "$d" ]] || hv_die "用法: hermes-vps domain set <域名> [--email x@y]"
+                    shift 2 || true; _hv_parse_flags "$@"
+                    hv_caddy_install
+                    hv_dashboard_configure "$d"
+                    hv_caddy_apply "$d" "${HV_ACME_EMAIL:-}" "${HV_ACME_CA:-}"
+                    ;;
+                apply)  hv_caddy_apply "$(hv_state_get DOMAIN "")" "$(hv_state_get ACME_EMAIL "")" "$(hv_state_get ACME_CA "")" ;;
+                status) hv_caddy_status; hv_status_summary ;;
+                *) hv_die "用法: hermes-vps domain set <域名>|apply|status" ;;
+            esac
+            ;;
+        mirror)
+            case "${1:-show}" in
+                probe) [[ "${2:-}" == "--force" ]] && hv_mirror_probe 1 || hv_mirror_probe 0; hv_mirror_show ;;
+                show)  hv_mirror_show ;;
+                *) hv_die "用法: hermes-vps mirror probe [--force]|show" ;;
+            esac
+            ;;
+        service)
+            case "${1:-status}" in
+                status)  hv_service_status ;;
+                restart) hv_service_restart_all ;;
+                stop|start) hv_service_action "hermes-${2:-gateway}.service" "$1" ;;
+                logs)    hv_service_logs "hermes-${2:-gateway}.service" 120 ;;
+                *) hv_die "用法: hermes-vps service status|restart|stop|start|logs [gateway|dashboard]" ;;
+            esac
+            ;;
+        status) hv_status_summary ;;
+        doctor) hv_doctor ;;
+        logs)   hv_logs "${1:-gateway}" "${2:-120}" ;;
+        backup)
+            case "${1:-list}" in
+                create) shift || true; _hv_parse_flags "$@"; hv_backup_create "${HV_BACKUP_LABEL:-manual}" ;;
+                list)   hv_backup_list ;;
+                restore) hv_backup_restore "${2:-}" ;;
+                prune)  hv_backup_prune "${2:-}" ;;
+                *) hv_die "用法: hermes-vps backup create|list|restore [文件]|prune" ;;
+            esac
+            ;;
+        update)
+            case "${1:-}" in
+                --auto)
+                    case "${2:-status}" in
+                        enable) hv_autoupdate_enable ;;
+                        disable) hv_autoupdate_disable ;;
+                        status|*) hv_autoupdate_status ;;
+                    esac
+                    ;;
+                *) _hv_parse_flags "$@"; hv_update_all ;;
+            esac
+            ;;
+        firewall) hv_firewall_setup ;;
+        uninstall) hv_uninstall ;;
+        help|"") _hv_usage ;;
+        *) hv_err "未知命令:$cmd"; _hv_usage; return 1 ;;
+    esac
+}
+
+main "$@"
