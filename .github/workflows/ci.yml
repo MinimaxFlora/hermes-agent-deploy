@@ -41,12 +41,12 @@ jobs:
       - name: 构建发布用单文件
         run: bash build.sh dist/hermes-vps.sh
 
-      - name: 产物自检
+      - name: 产物自检(输出保持可见,便于定位 CI 环境差异)
         run: |
           set -euo pipefail
           bash -n dist/hermes-vps.sh
-          bash dist/hermes-vps.sh selftest
           bash dist/hermes-vps.sh version
+          bash dist/hermes-vps.sh selftest
           sha256sum dist/hermes-vps.sh | tee dist/hermes-vps.sh.sha256
 
       - name: 上传产物(供人工检查)

@@ -94,6 +94,14 @@ assert_contains "$(bash "$DIST" help)" "install" "help 输出含子命令"
 assert_contains "$(bash "$DIST" --help)" "用法" "长帮助可用"
 out="$(bash "$DIST" 2>&1 || true)"
 assert_contains "$out" "用法" "无参数且无 TTY 时打印用法(不进菜单)"
-if (cd /tmp && bash "$DIST" selftest >/dev/null 2>&1); then c_ok "selftest 在仓库外也能跑"; else c_bad "selftest 在仓库外失败"; fi
+# 仓库外跑自检:失败时把 selftest 的完整输出打出来,便于在 CI 日志里定位
+st_rc=0
+st_out="$(cd /tmp && bash "$DIST" selftest 2>&1)" || st_rc=$?
+if [[ "${st_rc:-0}" -eq 0 ]]; then
+    c_ok "selftest 在仓库外也能跑"
+else
+    c_bad "selftest 在仓库外失败(退出码 ${st_rc:-?})"
+    printf '%s\n' "$st_out" | sed 's/^/      /'
+fi
 
 summary
