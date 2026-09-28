@@ -113,18 +113,43 @@ hv_port_owner() {
     fi
 }
 
+# 本机公网 IPv4(用于域名解析校验);失败返回非 0
+hv_public_ip_v4() {
+    local ip="" u
+    for u in "https://api.ipify.org" "https://ifconfig.me/ip" "https://ipv4.icanhazip.com"; do
+        ip="$(curl -s4 --max-time 6 "$u" 2>/dev/null | tr -d '[:space:]')"
+        if [[ "$ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then printf '%s' "$ip"; return 0; fi
+    done
+    return 1
+}
+
+_hv_is_private_ip() {
+    case "$1" in
+        10.*|127.*|192.168.*|169.254.*) return 0 ;;
+        172.1[6-9].*|172.2[0-9].*|172.3[01].*) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
 # 域名解析检查
+#   0 = 解析到本机;1 = 解析到别处;2 = 无法判断
 hv_domain_resolves_to_this_host() {
     local domain="$1"
     hv_have getent || return 2
-    local resolved local_ip
+    local resolved
     resolved="$(getent ahostsv4 "$domain" 2>/dev/null | awk '{print $1}' | sort -u | head -n1)"
     [[ -z "$resolved" ]] && return 1
+
+    # 本机地址:优先内核路由源地址;私有/NAT 场景下(云主机很常见)取公网 IP 兜底
+    local local_ip
     local_ip="$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i=="src") print $(i+1)}' | head -n1)"
-    [[ -z "$local_ip" ]] && local_ip="$(hostname -I 2>/dev/null | awk '{print $1}')"
-    [[ -n "$local_ip" && "$resolved" == "$local_ip" ]] && return 0
-    # 也可能解析到本机的其它公网 IP
-    if ip -4 addr show 2>/dev/null | grep -qw "$resolved"; then return 0; fi
+    if [[ -z "$local_ip" ]] || _hv_is_private_ip "$local_ip"; then
+        local pub
+        if pub="$(hv_public_ip_v4)"; then local_ip="$pub"; fi
+    fi
+
+    [[ "$resolved" == "$local_ip" ]] && return 0
+    ip -4 addr show 2>/dev/null | grep -qw "$resolved" && return 0
     return 1
 }
 
