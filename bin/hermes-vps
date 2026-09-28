@@ -16,7 +16,12 @@ fi
 
 set -Eeuo pipefail
 
-HV_SELF_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+# 解析脚本真实路径(必须跟随软链:/usr/local/bin/hermes-vps → /opt/hermes-vps/bin/hermes-vps)
+_hv_self="${BASH_SOURCE[0]}"
+if _hv_real="$(readlink -f "$_hv_self" 2>/dev/null)" && [[ -n "$_hv_real" ]]; then
+    _hv_self="$_hv_real"
+fi
+HV_SELF_DIR="$(cd -- "$(dirname -- "$_hv_self")/.." && pwd)"
 export HV_SELF_DIR
 
 # shellcheck source=/dev/null
