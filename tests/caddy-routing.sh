@@ -68,8 +68,10 @@ assert_contains "$(curl -fsS -m 2 "http://127.0.0.1:$DASH_PORT/" || true)" "DASH
 assert_contains "$(curl -fsS -m 2 "http://127.0.0.1:$API_PORT/" || true)" "API-UPSTREAM" "假 API 上游可用"
 
 # 用生产函数渲染,但把端口换成测试端口
+# 注意:站点地址必须显式写 http:// —— 裸 "127.0.0.1:端口" 会被 Caddy 当作 HTTPS 站点,
+#       并自动额外监听 :80 做 HTTP→HTTPS 跳转;非 root(CI、普通用户)绑不了 80 就会启动失败。
 cfg="$work/Caddyfile"
-caddy_render "127.0.0.1:$SITE_PORT" "" 1 \
+caddy_render "http://127.0.0.1:$SITE_PORT" "" 1 \
     | sed -e "s|127.0.0.1:9119|127.0.0.1:$DASH_PORT|" -e "s|127.0.0.1:8642|127.0.0.1:$API_PORT|" \
         -e "s|/var/log/caddy/hermes-access.log|$work/log/access.log|" -e "s|admin 127.0.0.1:2019|admin 127.0.0.1:$(( SITE_PORT + 9 ))|" >"$cfg"
 if "$CADDY" validate --adapter caddyfile --config "$cfg" >/tmp/hv-route.out 2>&1; then
@@ -95,7 +97,7 @@ assert_contains "$(curl -fsS -m 3 "http://127.0.0.1:$SITE_PORT/login" || true)" 
 
 # 关闭 API 时,/v1 也应落到面板(用同一套模板重新渲染)
 cfg2="$work/Caddyfile.noapi"
-caddy_render "127.0.0.1:$(( SITE_PORT + 5 ))" "" 0 \
+caddy_render "http://127.0.0.1:$(( SITE_PORT + 5 ))" "" 0 \
     | sed -e "s|127.0.0.1:9119|127.0.0.1:$DASH_PORT|" -e "s|admin 127.0.0.1:2019|admin 127.0.0.1:$(( SITE_PORT + 8 ))|" >"$cfg2"
 if "$CADDY" run --config "$cfg2" --adapter caddyfile >>"$work/caddy.log" 2>&1 & then
     caddy2_pid=$!
