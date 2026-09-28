@@ -33,8 +33,20 @@ hv_hermes_install() {
     hv_have curl || hv_die "缺少 curl"
 
     if hv_hermes_installed; then
-        hv_ok "Hermes 已安装($(hv_hermes_version 2>/dev/null))"
-        if ! hv_confirm "重新跑一次官方安装脚本?(更新/修复用,幂等)" no; then return 0; fi
+        hv_ok "Hermes 已安装($(hv_hermes_version 2>/dev/null || echo 版本未知))"
+        # 界面产物缺失说明上次安装中断(例如 OOM 被杀在打包环节),这时必须重跑
+        if [[ -d "${HV_UHOME}/hermes-agent/hermes_cli/web_dist" ]]; then
+            if [[ "${HV_FORCE:-0}" == "1" ]]; then
+                hv_info "按 --force 重新执行官方安装脚本"
+            elif hv_confirm "重新跑一次官方安装脚本?(默认跳过:已安装且产物完整)" no; then
+                :
+            else
+                hv_info "跳过重复安装(需要强制重装时:hermes-vps install --force)"
+                return 0
+            fi
+        else
+            hv_warn "检测到上次安装未完成(缺少界面产物),自动重跑官方安装脚本修复"
+        fi
     fi
 
     hv_step "获取官方安装脚本"
