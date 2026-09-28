@@ -54,10 +54,10 @@ hv_backup_create() {
         -C "$staged" systemd etc 2>/dev/null
     rc=$?
     set -e
-    rm -rf "$staged"
 
-    if [[ $rc -ne 0 ]]; then
-        # 兜底:换一种 -C 组合再打一次,但保持 ".hermes/..." 的相对布局
+    # 只有 >1 才算真失败;rc=1 是"文件在读取时变化"的正常警告(网关在跑)
+    if [[ $rc -gt 1 ]]; then
+        hv_warn "首次打包返回 $rc,尝试换一种 -C 组合重试"
         set +e
         tar czf "$out" "${HV_BACKUP_EXCLUDES[@]}" \
             -C "$(dirname "$HV_UHOME")" "$(basename "$HV_UHOME")" \
@@ -65,9 +65,10 @@ hv_backup_create() {
         rc=$?
         set -e
     fi
-    # tar 的退出码 1 = "文件在读取时发生变化"之类的警告(网关正在跑就会这样),
-    # 这类警告不影响备份可用性,不算失败。
+    rm -rf "$staged"   # 必须在所有 tar 调用之后清理(replace 前不能再引用)
+
     if [[ $rc -gt 1 || ! -s "$out" ]]; then
+        rm -f "$out"   # 不留下半成品包(避免以后误当成可用备份)
         hv_err "备份失败(rc=$rc)"; return 1
     fi
 
