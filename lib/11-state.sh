@@ -32,7 +32,9 @@ kv_del() {
 }
 state_init() { # 建目录失败不再致命(非 root/只读系统下也应能给出清晰后续错误,而不是在此处崩)
     mkdir -p "$ETC_DIR" "$TOOL_LOG_DIR" "$BACKUP_DIR" 2>/dev/null || true
-    if [[ ! -f "$STATE_FILE" ]]; then : >"$STATE_FILE" 2>/dev/null || true; fi
+    # 注意重定向顺序:stdout 重定向失败时,报错发生在 stderr 被静音之前
+    # (`: >"$f" 2>/dev/null` 仍会把 "No such file or directory" 打到终端)
+    if [[ ! -f "$STATE_FILE" ]]; then : 2>/dev/null >"$STATE_FILE" || true; fi
     chmod 600 "$STATE_FILE" 2>/dev/null || true
     return 0
 }

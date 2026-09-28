@@ -41,6 +41,17 @@ jobs:
       - name: 构建发布用单文件
         run: bash build.sh dist/hermes-vps.sh
 
+      - name: 权限关卡(root-only)自检
+        run: |
+          set -euo pipefail
+          # 管理命令在非 root 下必须被拦下(退出码非 0);version/selftest 必须放行
+          if bash dist/hermes-vps.sh model >/dev/null 2>&1; then
+            echo "✘ 非 root 竟然执行了管理命令 —— root-only 关卡失效"; exit 1
+          fi
+          bash dist/hermes-vps.sh version >/dev/null
+          bash dist/hermes-vps.sh selftest >/dev/null
+          echo "✔ root-only 关卡生效;version/selftest 允许非 root"
+
       - name: 产物自检(输出保持可见,便于定位 CI 环境差异)
         run: |
           set -euo pipefail

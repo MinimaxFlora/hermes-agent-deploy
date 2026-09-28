@@ -72,7 +72,7 @@ LOG_FILE="${TOOL_LOG_DIR}/hermes-vps.log"
 _log() {
     local lv="$1"; shift
     local line; line="$(date '+%Y-%m-%d %H:%M:%S') [$lv] $*"
-    if mkdir -p "$TOOL_LOG_DIR" 2>/dev/null; then printf '%s\n' "$line" >>"$LOG_FILE" 2>/dev/null || true; fi
+    if mkdir -p "$TOOL_LOG_DIR" 2>/dev/null; then printf '%s\n' "$line" 2>/dev/null >>"$LOG_FILE" || true; fi
     return 0
 }
 info() { _log INFO "$*"; printf '  %s %s\n' "${B}·${N}" "$*"; }
