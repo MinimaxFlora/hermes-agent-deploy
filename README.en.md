@@ -48,31 +48,6 @@ The UI is a **plain text menu** — type a number and you are done. No dialog bo
 
 ---
 
-## 🧩 Run modes: root and regular users are both supported
-
-The script detects your identity at startup; both modes are fully usable with no extra flags:
-
-| | **System-wide (root)** | **User mode (regular user)** |
-|---|---|---|
-| Config/state | `/etc/hermes-vps` | `~/.config/hermes-vps` |
-| Logs | `/var/log/hermes-vps` | `~/.local/state/hermes-vps` |
-| Backups | `/var/backups/hermes-vps` | `~/.local/share/hermes-vps/backups` |
-| Hermes data | `/opt/hermes/.hermes` (dedicated `hermes` user) | `~/.hermes` (your own account) |
-| Services | system `systemd` units (boot-start) | `systemd --user`; falls back to a **background process + PID file** when there is no user DBus |
-| Domain + HTTPS (80/443) | ✅ built-in Caddy with automatic certificates | ⚠️ privileged: selecting it offers to re-run via `sudo` |
-| Firewall / swap / OS packages | ✅ automatic | ⚠️ privileged (explicitly reported, never a silent failure) |
-| Models / platforms (QQ, WeChat…)/ dashboard / backups / self-check | ✅ | ✅ |
-
-```bash
-# Regular user (user mode, touches nothing outside $HOME)
-curl -fsSL https://raw.githubusercontent.com/MinimaxFlora/hermes-agent-deploy/main/install.sh | bash -s -- --user
-
-# root (system-wide; recommended, one instance per machine)
-curl -fsSL https://raw.githubusercontent.com/MinimaxFlora/hermes-agent-deploy/main/install.sh | sudo bash
-```
-
-Check the current mode with `hermes-vps mode`. The status panel also shows `模式:` and marks root-only entries as `需要 root`.
-
 ## 🚀 Quick start (60 seconds)
 
 ```bash

@@ -9,13 +9,7 @@
 #     bash install.sh --check                只看当前版本与最新版本
 #     bash install.sh --version v1.0.0       安装指定版本
 #     bash install.sh --to ~/bin             安装到自定义目录
-#     bash install.sh --user                 装到 ~/.local/bin(普通用户,不需要 root)
-#     bash install.sh --system               装到 /usr/local/bin(root 用)
 #     bash install.sh --dry-run              只解析并下载,不安装
-#
-#  运行模式:工具本身两种身份都支持 —— root 跑 = 系统级(专用服务用户 +
-#    systemd 系统服务 + /etc 配置 + Caddy 80/443);普通用户跑 = 用户态
-#    (全部落在 $HOME,服务用 systemd --user,不可用时退回后台进程)。
 #
 #  说明:脚本本体由 GitHub Actions 在打 tag 时构建并上传到 Release,
 #        仓库里只有模块化源码(lib/ + bin/),发布产物是自包含单文件。
@@ -47,8 +41,6 @@ while [[ $# -gt 0 ]]; do
     case "$1" in
         --version|-V) WANT_VERSION="${2:-}"; shift 2 ;;
         --to|-d) DEST_DIR="${2:-}"; shift 2 ;;
-        --user) DEST_DIR="${HOME}/.local/bin"; shift ;;
-        --system) DEST_DIR="/usr/local/bin"; shift ;;
         --repo) REPO="${2:-}"; API="https://api.github.com/repos/${REPO}/releases"; shift 2 ;;
         --dry-run) DRY_RUN=1; shift ;;
         --check) CHECK_ONLY=1; shift ;;
@@ -167,12 +159,7 @@ main() {
     else
         printf '    %s把 %s 加入 PATH,然后运行 hermes-vps%s\n' "$C_DIM" "$dest" "$C_N"
     fi
-    if [[ "$(id -u)" -eq 0 ]]; then
-        printf '    %s当前是 root:直接部署即系统级(专用服务用户 + 系统服务 + 域名 HTTPS)%s\n' "$C_DIM" "$C_N"
-    else
-        printf '    %s当前是普通用户:直接用即可走用户态(全部落在 $HOME)%s\n' "$C_DIM" "$C_N"
-        printf '    %s需要域名/HTTPS(80/443)、防火墙等系统级能力时,再用 sudo hermes-vps%s\n' "$C_DIM" "$C_N"
-    fi
+    [[ "$(id -u)" -ne 0 ]] && printf '    %s提示:部署需要 root 权限(部署时用 sudo hermes-vps)%s\n' "$C_DIM" "$C_N"
     printf '\n'
 }
 

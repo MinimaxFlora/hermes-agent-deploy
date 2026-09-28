@@ -13,6 +13,7 @@ diag_add() { # diag_add <状态 ok|fail|warn|info> <文本>
 }
 
 diagnose() {
+    require_root
     clear_screen
     header "自检 / 诊断"
     DIAG_OK=0; DIAG_FAIL=0

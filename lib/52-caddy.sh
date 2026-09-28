@@ -12,12 +12,7 @@ caddy_ensure_user() {
 }
 
 caddy_prepare_runtime() {
-    if [[ "$HV_MODE" != "system" ]]; then
-        mkdir -p "$CADDY_LOG_DIR" "$(dirname "$CADDYFILE")" 2>/dev/null || true
-        [[ -f "$CADDY_LOG_DIR/hermes-access.log" ]] || : >"$CADDY_LOG_DIR/hermes-access.log" 2>/dev/null || true
-        return 0
-    fi
-    require_root "准备 Caddy 运行目录"
+    require_root
     install -d -m 755 "$CADDY_LOG_DIR" 2>/dev/null || mkdir -p "$CADDY_LOG_DIR"
     [[ -f "$CADDY_LOG_DIR/hermes-access.log" ]] || : >"$CADDY_LOG_DIR/hermes-access.log"
     chown -R caddy:caddy "$CADDY_LOG_DIR" 2>/dev/null || true
@@ -28,23 +23,8 @@ caddy_prepare_runtime() {
     return 0
 }
 
-caddy_install_user() { # 用户态:只装二进制,不建系统用户/单元
-    if caddy_installed; then ok "Caddy 已可用:$(caddy_version)"; return 0; fi
-    step "安装 Caddy(用户态:装到 $CADDY_BIN)"
-    local arch="amd64"; [[ "$ARCH" == "aarch64" ]] && arch="arm64"
-    mkdir -p "$(dirname "$CADDY_BIN")" "$CADDY_LOG_DIR"
-    local tmp; tmp="$(mktemp)"
-    curl -fL --max-time 180 -o "$tmp" "https://caddyserver.com/api/download?os=linux&arch=${arch}" \
-        || die "下载 Caddy 失败(用户态无法用 apt,只能下载官方二进制)"
-    install -m 755 "$tmp" "$CADDY_BIN"; rm -f "$tmp"
-    ok "Caddy 已安装:$CADDY_BIN($("$CADDY_BIN" version 2>/dev/null | sed -n '1p'))"
-    dim "用户态 Caddy 只能监听高位端口;域名 + 80/443 需要系统级(菜单 4 会提示提权)"
-    return 0
-}
-
 caddy_install() {
-    if [[ "$HV_MODE" != "system" ]]; then caddy_install_user; return $?; fi
-    require_root "安装 Caddy"
+    require_root
     if caddy_installed; then ok "Caddy 已安装:$(caddy_version)"; caddy_prepare_runtime; return 0; fi
     step "安装 Caddy"
     local from_apt=0
@@ -82,8 +62,8 @@ Wants=network-online.target
 Type=notify
 User=caddy
 Group=caddy
-ExecStart=$CADDY_BIN run --environ --config $CADDYFILE --adapter caddyfile
-ExecReload=$CADDY_BIN reload --config $CADDYFILE --adapter caddyfile --force
+ExecStart=$CADDY_BIN run --environ --config /etc/caddy/Caddyfile --adapter caddyfile
+ExecReload=$CADDY_BIN reload --config /etc/caddy/Caddyfile --adapter caddyfile --force
 TimeoutStopSec=5s
 LimitNOFILE=1048576
 PrivateTmp=true
@@ -166,7 +146,7 @@ caddy_validate() { # 校验给定内容
 
 caddy_write_config() { # 写入并 reload(校验不通过绝不 reload)
     local domain="$1" email="$2" api_on="$3"
-    if [[ "$HV_MODE" == "system" ]]; then require_root "写入 Caddy 配置"; fi
+    require_root
     caddy_prepare_runtime
     local content; content="$(caddy_render "$domain" "$email" "$api_on")"
     caddy_validate "$content" || return 1
@@ -232,7 +212,6 @@ cert_expire_date() {
 }
 
 domain_configure() {
-    if [[ "$HV_MODE" != "system" ]]; then escalate_or_skip "域名与反向代理(80/443 + 自动 HTTPS)" || true; return 0; fi
     hermes_installed || { warn "请先部署(菜单 1)"; pause; return 1; }
     clear_screen
     header "域名与反向代理(Caddy)"

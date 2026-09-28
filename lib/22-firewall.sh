@@ -19,8 +19,7 @@ ssh_ports() {
     printf '%s' "$ports"
 }
 firewall_setup() {
-    if [[ "$HV_MODE" != "system" ]]; then escalate_or_skip "防火墙与安全加固" || true; return 0; fi
-    require_root "配置防火墙"
+    require_root
     local be; be="$(fw_backend)"; local sp; sp="$(ssh_ports)"
     rule
     printf '    防火墙后端 : %s\n' "$be"

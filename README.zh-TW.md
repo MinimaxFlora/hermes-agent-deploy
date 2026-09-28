@@ -48,31 +48,6 @@
 
 ---
 
-## 🧩 執行模式:root 與一般使用者都支援
-
-腳本啟動時**自動判斷身分**,兩種模式都能用,不需要額外參數:
-
-| | **系統級(root)** | **使用者態(一般使用者)** |
-|---|---|---|
-| 設定/狀態 | `/etc/hermes-vps` | `~/.config/hermes-vps` |
-| 日誌 | `/var/log/hermes-vps` | `~/.local/state/hermes-vps` |
-| 備份 | `/var/backups/hermes-vps` | `~/.local/share/hermes-vps/backups` |
-| Hermes 資料 | `/opt/hermes/.hermes`(專用使用者 `hermes`) | `~/.hermes`(你自己的帳號) |
-| 服務 | `systemd` 系統服務(開機自啟) | `systemd --user`;沒有使用者 DBus 時自動退回**背景程序 + PID 檔** |
-| 網域 + HTTPS(80/443) | ✅ 內建 Caddy 自動簽憑證 | ⚠️ 需要特權:選到該功能會提示用 `sudo` 重新執行 |
-| 防火牆 / swap / 系統套件 | ✅ 自動 | ⚠️ 需要特權(會明確提示,不會靜默失敗) |
-| 模型 / 平台(QQ、微信…)/ 面板 / 備份 / 自檢 | ✅ | ✅ |
-
-```bash
-# 一般使用者直接跑(使用者態,不碰系統目錄)
-curl -fsSL https://raw.githubusercontent.com/MinimaxFlora/hermes-agent-deploy/main/install.sh | bash -s -- --user
-
-# root 直接跑(系統級,推薦:一台機器一個實例)
-curl -fsSL https://raw.githubusercontent.com/MinimaxFlora/hermes-agent-deploy/main/install.sh | sudo bash
-```
-
-查看目前模式:`hermes-vps mode`。選單上方狀態面板也會顯示「模式:…」,僅 root 可用的項目會標註「需要 root」。
-
 ## 🚀 60 秒開始
 
 ```bash

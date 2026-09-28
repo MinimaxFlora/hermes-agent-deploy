@@ -25,8 +25,7 @@ export HV_LOG_DIR="$HV_SANDBOX/log"
 export HV_BACKUP_DIR="$HV_SANDBOX/backups"
 # Caddy 的 validate 会打开日志写入器 → 沙箱里给个可写目录(CI 非 root 时 /var/log/caddy 不可写)
 export HV_CADDY_LOG_DIR="$HV_SANDBOX/caddy-log"
-export HV_HHOME="$HV_SANDBOX/home"          # 用户态下 HHOME=家目录 → 测试里别碰真实家目录
-mkdir -p "$HV_ETC_DIR" "$HV_LOG_DIR" "$HV_BACKUP_DIR" "$HV_CADDY_LOG_DIR" "$HV_HHOME"
+mkdir -p "$HV_ETC_DIR" "$HV_LOG_DIR" "$HV_BACKUP_DIR" "$HV_CADDY_LOG_DIR"
 
 # 载入全部 lib(与入口的开发模式一致)
 # ⚠️ 必须在**顶层** source:若在函数里 source,`declare -A` 会变成函数局部变量,

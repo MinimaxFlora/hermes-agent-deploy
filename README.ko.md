@@ -48,31 +48,6 @@ UI는 **일반 텍스트 메뉴**입니다. 번호만 입력하면 됩니다. �
 
 ---
 
-## 🧩 실행 모드: root 와 일반 사용자 모두 지원
-
-시작할 때 **자동 판별**하며, 추가 옵션 없이 두 모드 모두 사용할 수 있습니다:
-
-| | **시스템 모드(root)** | **사용자 모드(일반 사용자)** |
-|---|---|---|
-| 설정/상태 | `/etc/hermes-vps` | `~/.config/hermes-vps` |
-| 로그 | `/var/log/hermes-vps` | `~/.local/state/hermes-vps` |
-| 백업 | `/var/backups/hermes-vps` | `~/.local/share/hermes-vps/backups` |
-| Hermes 데이터 | `/opt/hermes/.hermes` (전용 `hermes` 계정) | `~/.hermes` (본인 계정) |
-| 서비스 | `systemd` 시스템 서비스(부팅 시 자동 시작) | `systemd --user`; 사용자 DBus 가 없으면 **백그라운드 프로세스 + PID 파일** 로 자동 전환 |
-| 도메인 + HTTPS(80/443) | ✅ 내장 Caddy 자동 인증서 | ⚠️ 권한 필요: 선택 시 `sudo` 재실행 안내 |
-| 방화벽 / swap / 시스템 패키지 | ✅ 자동 | ⚠️ 권한 필요(명확히 안내, 조용한 실패 없음) |
-| 모델 / 플랫폼(QQ, WeChat…)/ 대시보드 / 백업 / 자가진단 | ✅ | ✅ |
-
-```bash
-# 일반 사용자(사용자 모드, $HOME 밖은 건드리지 않음)
-curl -fsSL https://raw.githubusercontent.com/MinimaxFlora/hermes-agent-deploy/main/install.sh | bash -s -- --user
-
-# root(시스템 모드, 머신당 1개 인스턴스 권장)
-curl -fsSL https://raw.githubusercontent.com/MinimaxFlora/hermes-agent-deploy/main/install.sh | sudo bash
-```
-
-현재 모드는 `hermes-vps mode` 로 확인합니다. 상태 패널에도 「模式:…」이 표시되고, root 전용 항목은 「需要 root」로 표시됩니다.
-
 ## 🚀 60초 시작하기
 
 ```bash

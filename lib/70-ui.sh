@@ -82,7 +82,6 @@ status_panel() {
     local -a P=() CL=()
     row() { P+=("$1"); CL+=("$2"); }
 
-    row "  模式        $(mode_label)" "  模式        ${C}$(mode_label)${N}"
     if hermes_installed; then
         row "  Hermes      ● $hv" "  Hermes      $(printf '%s' "$DOT_ON") $hv"
     else
@@ -144,21 +143,13 @@ main_menu() {
         menu_item 1  "一键部署 / 重新部署" "安装 Hermes、面板、域名、平台接入"
         menu_item 2  "模型提供商"         "填 API Key,并真实验证能否对话"
         menu_item 3  "消息平台"           "QQ / 微信 / 企业微信 / 飞书 / 钉钉 / TG"
-        if [[ "$HV_MODE" == "system" ]]; then
-            menu_item 4  "域名与反向代理"     "Caddy 自动 HTTPS、证书状态"
-        else
-            menu_item 4  "域名与反向代理"     "需要 root(80/443):普通用户可提权执行"
-        fi
+        menu_item 4  "域名与反向代理"     "Caddy 自动 HTTPS、证书状态"
         menu_item 5  "面板与 API"         "登录密码、公网地址、/v1 开关"
         menu_item 6  "服务管理"           "启动 / 停止 / 重启 / 看日志"
         menu_item 7  "自检与诊断"         "服务、端口、认证门、API、证书、备份"
         menu_item 8  "备份与恢复"         "打包配置与密钥,可一键回滚"
         menu_item 9  "更新"               "立即更新 / 每日自动更新"
-        if [[ "$HV_MODE" == "system" ]]; then
-            menu_item 10 "防火墙与安全"       "只放行 SSH / 80 / 443"
-        else
-            menu_item 10 "防火墙与安全"       "需要 root:普通用户可提权执行"
-        fi
+        menu_item 10 "防火墙与安全"       "只放行 SSH / 80 / 443"
         menu_item 11 "网络加速探测"       "GitHub / PyPI 国内镜像自动选优"
         menu_item 12 "使用说明 / 帮助"    "常用命令与路径"
         menu_item 13 "卸载"               "逐项确认,绝不静默批量删"
