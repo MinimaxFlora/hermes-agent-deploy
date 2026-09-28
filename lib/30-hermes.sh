@@ -3,7 +3,14 @@
 # =============================================================================
 
 ensure_user() {
-    require_root
+    # 用户态:不创建任何系统用户,只准备目录(就是当前用户自己)
+    if [[ "$HV_MODE" != "system" ]]; then
+        info "用户态模式:数据放在 $HHOME(当前用户 $(id -un)),不创建系统用户"
+        install -d -m 700 "$UHOME" 2>/dev/null || mkdir -p "$UHOME"
+        install -d -m 755 "$HHOME/.local" "$HHOME/.local/bin" 2>/dev/null || mkdir -p "$HHOME/.local/bin"
+        return 0
+    fi
+    require_root "创建服务用户 $HUSER"
     if id "$HUSER" >/dev/null 2>&1; then
         local cur; cur="$(getent passwd "$HUSER" | cut -d: -f6)"
         if [[ "$cur" != "$HHOME" ]]; then

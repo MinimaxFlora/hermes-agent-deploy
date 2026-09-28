@@ -6,6 +6,11 @@ usage() {
 
   Hermes Agent · VPS 一键部署与管理  v$V
 
+  运行模式(自动识别,无需参数):
+    root        系统级:专用服务用户 hermes、systemd 系统服务、/etc 配置、Caddy 80/443
+    普通用户    用户态:全部落在 $HOME,服务用 systemd --user(不可用时后台进程),
+                需要特权的功能(域名/HTTPS、防火墙)会提示用 sudo 重新执行
+
   用法:
     bash ${SELF##*/}                 打开交互菜单(推荐)
     bash ${SELF##*/} <命令> [参数]    直接执行,适合脚本化
@@ -24,8 +29,9 @@ usage() {
     mirror [--force]  探测并应用国内加速通道
     uninstall         卸载(逐项确认)
     selftest          自检脚本自身(语法/数据表/渲染)
-    self-install      把自己装成命令 /usr/local/bin/hermes-vps
+    self-install      把自己装成命令(系统级 /usr/local/bin,用户态 ~/.local/bin)
     version           版本
+    mode              显示当前运行模式(系统级 / 用户态)
 
   通用参数:
     -y, --yes            全部确认自动回答“是”
@@ -60,7 +66,7 @@ main() {
 
     local cmd="${args[0]:-}"
     if [[ -z "$cmd" ]]; then
-        if [[ -t 0 && -t 1 ]]; then require_root; main_menu
+        if [[ -t 0 && -t 1 ]]; then main_menu
         else usage; fi
         return 0
     fi
@@ -70,6 +76,7 @@ main() {
     case "$cmd" in
         help|-h|--help) usage ;;
         version|-V|--version) printf 'hermes-vps %s\n' "$V" ;;
+        mode|--mode) printf '运行模式:%s\n配置 %s · 日志 %s · HERMES_HOME %s\n' "$(mode_label)" "$ETC_DIR" "$TOOL_LOG_DIR" "$UHOME" ;;
         install|deploy) deploy_all ;;
         model) model_menu ;;
         platform|platforms) plat_menu ;;
@@ -97,13 +104,22 @@ main() {
         uninstall) uninstall_run ;;
         selftest) selftest ;;
         self-install|selfinstall)
-            require_root
-            if [[ -f /usr/local/bin/hermes-vps ]] && ! cmp -s "$SELF" /usr/local/bin/hermes-vps; then
-                cp -p /usr/local/bin/hermes-vps "/usr/local/bin/hermes-vps.bak" 2>/dev/null || true
-                info "旧副本已备份到 /usr/local/bin/hermes-vps.bak"
+            local target="/usr/local/bin/hermes-vps"
+            if [[ "$HV_MODE" != "system" ]]; then
+                target="$USER_HOME/.local/bin/hermes-vps"      # 用户态:装进自己的 ~/.local/bin
+                mkdir -p "$(dirname "$target")"
+            else
+                require_root "安装命令到 /usr/local/bin"
             fi
-            install -m 755 "$SELF" /usr/local/bin/hermes-vps
-            ok "已安装命令:/usr/local/bin/hermes-vps(任意目录输入 hermes-vps 即可打开菜单)" ;;
+            if [[ -f "$target" ]] && ! cmp -s "$SELF" "$target"; then
+                cp -p "$target" "$target.bak" 2>/dev/null || true
+                info "旧副本已备份到 $target.bak"
+            fi
+            install -m 755 "$SELF" "$target" 2>/dev/null || { cp -p "$SELF" "$target" && chmod 755 "$target"; }
+            ok "已安装命令:$target"
+            if [[ "$HV_MODE" != "system" ]]; then
+                case ":$PATH:" in *":$USER_HOME/.local/bin:"*) : ;; *) dim "把 $USER_HOME/.local/bin 加进 PATH 后即可直接输入 hermes-vps";; esac
+            fi ;;
         *) err "未知命令:$cmd"; usage; exit 1 ;;
     esac
 }
