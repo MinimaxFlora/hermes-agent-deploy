@@ -1,0 +1,18 @@
+# ---------------------------------------------------------------------------
+# 入口 —— 开发时直接 `bash bin/hermes-vps`(下面这块会载入 lib/)
+# 构建成单文件时 lib 已内联,下面整块会被 build.sh 删除
+# ---------------------------------------------------------------------------
+# >>> dev-source (build.sh 会删除本块) >>>
+_hv_self="${BASH_SOURCE[0]}"
+_hv_self="$(readlink -f "$_hv_self" 2>/dev/null || printf '%s' "$_hv_self")"
+_hv_libdir="$(dirname "$_hv_self")/../lib"
+if [[ -d "$_hv_libdir" ]]; then
+    for _hv_f in "$_hv_libdir"/*.sh; do
+        # shellcheck disable=SC1090
+        . "$_hv_f"
+    done
+fi
+unset _hv_self _hv_libdir _hv_f
+# <<< dev-source <<<
+
+main "$@"

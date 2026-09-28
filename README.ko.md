@@ -54,15 +54,16 @@ UI는 **일반 텍스트 메뉴**입니다. 번호만 입력하면 됩니다. �
 # 1) 서버 접속
 ssh root@<서버 주소>
 
-# 2) 내려받기 (또는 scp로 업로드)
-curl -fsSL https://raw.githubusercontent.com/MinimaxFlora/hermes-agent-deploy/main/hermes-vps.sh -o /root/hermes-vps.sh
+# 2) 설치(최신 Release를 받아 sha256 검증 후 /usr/local/bin에 설치)
+curl -fsSL https://raw.githubusercontent.com/MinimaxFlora/hermes-agent-deploy/main/install.sh | bash
 
-# 3) 실행
-bash /root/hermes-vps.sh
+# 3) 메뉴 열기(첫 실행은 1 선택)
+hermes-vps
 
-# 4) 선택: 명령어로 등록
-bash /root/hermes-vps.sh self-install   # /usr/local/bin/hermes-vps 로 설치
-hermes-vps                              # 이후에는 이것만 입력하면 메뉴가 열립니다
+# 기타
+bash install.sh --check              # 설치본과 최신 버전 비교
+bash install.sh --version v1.0.0       # 특정 버전 설치
+bash install.sh --to ~/.local/bin    # 비 root라면 원하는 경로에
 ```
 
 처음에는 메뉴에서 `1`(원클릭 배포)을 선택하세요. 도메인(비워도 됨)과 모델 공급자를 입력하면 나머지는 자동입니다. 보통 5~15분(장비와 네트워크에 따라 다름).
@@ -198,15 +199,38 @@ hermes-vps                              # 이후에는 이것만 입력하면 �
 ## 🏗 구조와 저장 위치
 
 ```
-hermes-vps.sh                ← 유일한 산출물: 한 파일 안을 책임별 구역으로 분리
-  ├─ 코어 계층             로그 / 색상 / 입력 프리미티브 / 상태 저장 / 서비스 사용자 실행
-  ├─ 시스템 계층           배포판 감지 / 의존성 / swap 보호 / 미러 / 방화벽
-  ├─ 모델 계층             공급자 데이터 표 + 직접 검증 + 실제 대화 테스트
-  ├─ 플랫폼 계층           데이터 표 + 벤더 API 검증 + 스크립트 내 QR
-  ├─ 대시보드 & Caddy 계층 인증 게이트 / systemd 유닛 / Caddyfile 렌더링·인증서
-  ├─ 운영 계층             백업 복원 / 업데이트 / 자가진단 / 삭제
-  └─ UI 계층               배너 / 상태 패널 / 메뉴 / 진입점 / selftest
+소스(저장소에는 이것만 있습니다. 릴리스 산출물은 CI가 만들며 커밋하지 않습니다)
+  lib/00-common.sh       코어: 상수 / 색상 / 로그 / 입력 프리미티브 / 상태 저장 / 서비스 사용자 실행
+  lib/10-input.sh        대화형 프리미티브(일반 텍스트, whiptail 없음)
+  lib/11-state.sh        키-값 저장 / 상태 / 자격 증명
+  lib/12-run.sh          서비스 사용자로 실행
+  lib/20-system.sh       배포판 감지 / 의존성 / swap 보호
+  lib/21-mirror.sh       미러(GitHub / PyPI 벤치마크)
+  lib/22-firewall.sh     방화벽(추가만)
+  lib/23-probe.sh        각종 점검(포트 / 서비스 / 공인 IP / DNS)
+  lib/30-hermes.sh       서비스 사용자 + Hermes 설치와 업데이트
+  lib/31-model.sh        공급자 표 + 2단계 연결 검증
+  lib/40-platform.sh     플랫폼 표 + 벤더 API 검증 + 스크립트 내 QR
+  lib/50-webui.sh        대시보드 인증 게이트 / 자격 증명 / 공개 URL
+  lib/51-service.sh      systemd 유닛과 서비스 제어
+  lib/52-caddy.sh        Caddy 설치 / 렌더링 / 검증 / 인증서
+  lib/60-backup.sh       백업 복원 / 업데이트와 자동 업데이트
+  lib/61-doctor.sh       헬스체크(22개 항목)
+  lib/62-lifecycle.sh    삭제(경로별 확인)
+  lib/70-ui.sh           배너 / 상태 패널 / 메뉴
+  lib/71-deploy.sh       원클릭 배포 오케스트레이션
+  lib/72-help.sh         도움말
+  lib/80-cli.sh          인자 파싱과 하위 명령 디스패치
+  lib/90-selftest.sh     자체 점검
+  bin/hermes-vps         진입점(개발 시 `bash bin/hermes-vps`가 lib/를 로드)
+  build.sh               dist/hermes-vps.sh 조립
+  install.sh             Release에서 설치 / 업그레이드(최신 + sha256 검증)
+  tests/                 lint / smoke / strict / 실제 caddy 검증 / 라우팅 / 인수 테스트
+  VERSION                버전. 태그는 v$VERSION 이어야 합니다
+  .github/workflows/     ci.yml(전체 테스트) + release.yml(태그 시 빌드 & 배포)
 ```
+
+**릴리스 흐름**: `VERSION` 수정 → 태그 `v$VERSION` 푸시 → Actions가 전체 테스트를 돌리고 `hermes-vps.sh`를 빌드해 `.sha256`과 함께 Release를 만듭니다. 사용자는 `install.sh`만 실행하면 항상 같은 자체 완결 스크립트를 받습니다.
 
 | 경로 | 내용 |
 |---|---|

@@ -1,0 +1,66 @@
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: 构建并发布 Release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 校验标签与 VERSION 一致
+        run: |
+          set -euo pipefail
+          v="$(tr -d '[:space:]' < VERSION)"
+          if [[ "v$v" != "${GITHUB_REF_NAME}" ]]; then
+            echo "::error::标签 ${GITHUB_REF_NAME} 与 VERSION(v$v)不一致:请先改 VERSION 再打标签"
+            exit 1
+          fi
+          echo "版本一致:v$v"
+
+      - name: 安装 caddy(测试用)
+        run: |
+          set -euo pipefail
+          curl -fsSL "https://caddyserver.com/api/download?os=linux&arch=amd64" -o /tmp/caddy
+          sudo install -m 755 /tmp/caddy /usr/local/bin/caddy
+          caddy version
+
+      - name: 发布前全量测试
+        run: |
+          set -euo pipefail
+          bash tests/lint.sh
+          bash tests/smoke.sh
+          bash tests/strict.sh
+          bash tests/caddyfile-validate.sh
+          bash tests/caddy-routing.sh
+
+      - name: 构建单文件
+        run: bash build.sh dist/hermes-vps.sh
+
+      - name: 产物自检 + 生成校验和
+        run: |
+          set -euo pipefail
+          bash -n dist/hermes-vps.sh
+          bash dist/hermes-vps.sh selftest
+          bash dist/hermes-vps.sh version
+          cd dist && sha256sum hermes-vps.sh > hermes-vps.sh.sha256
+          cat hermes-vps.sh.sha256
+
+      - name: 发布到 GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release create "${GITHUB_REF_NAME}" \
+            dist/hermes-vps.sh \
+            dist/hermes-vps.sh.sha256 \
+            --title "hermes-vps ${GITHUB_REF_NAME}" \
+            --generate-notes
+          gh release view "${GITHUB_REF_NAME}" --json tagName,assets --jq '.tagName, (.assets[].name)'

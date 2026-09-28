@@ -1,0 +1,57 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: 测试与构建
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安装 caddy(用于配置校验与路由测试)
+        run: |
+          set -euo pipefail
+          curl -fsSL "https://caddyserver.com/api/download?os=linux&arch=amd64" -o /tmp/caddy
+          sudo install -m 755 /tmp/caddy /usr/local/bin/caddy
+          caddy version
+
+      - name: 静态检查 lint
+        run: bash tests/lint.sh
+
+      - name: 冒烟测试 smoke
+        run: bash tests/smoke.sh
+
+      - name: 严格模式回归 strict
+        run: bash tests/strict.sh
+
+      - name: Caddyfile 校验(真实 caddy)
+        run: bash tests/caddyfile-validate.sh
+
+      - name: 路由行为测试(真实 caddy + 假上游)
+        run: bash tests/caddy-routing.sh
+
+      - name: 构建发布用单文件
+        run: bash build.sh dist/hermes-vps.sh
+
+      - name: 产物自检
+        run: |
+          set -euo pipefail
+          bash -n dist/hermes-vps.sh
+          bash dist/hermes-vps.sh selftest
+          bash dist/hermes-vps.sh version
+          sha256sum dist/hermes-vps.sh | tee dist/hermes-vps.sh.sha256
+
+      - name: 上传产物(供人工检查)
+        uses: actions/upload-artifact@v4
+        with:
+          name: hermes-vps.sh
+          path: dist/hermes-vps.sh
+          if-no-files-found: error

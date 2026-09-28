@@ -54,15 +54,16 @@
 # 1) 登入你的伺服器
 ssh root@<你的伺服器>
 
-# 2) 下載（或直接 scp 上傳）
-curl -fsSL https://raw.githubusercontent.com/MinimaxFlora/hermes-agent-deploy/main/hermes-vps.sh -o /root/hermes-vps.sh
+# 2) 安裝(自動取最新 Release,校驗 sha256 後裝到 /usr/local/bin)
+curl -fsSL https://raw.githubusercontent.com/MinimaxFlora/hermes-agent-deploy/main/install.sh | bash
 
-# 3) 跑起來
-bash /root/hermes-vps.sh
+# 3) 打開選單(首次部署選 1)
+hermes-vps
 
-# 4) 想之後隨處可用
-bash /root/hermes-vps.sh self-install   # 裝成 /usr/local/bin/hermes-vps
-hermes-vps                              # 之後一句就打開選單
+# 其他用法
+bash install.sh --check              # 只看已裝版本 vs 最新版本
+bash install.sh --version v1.0.0       # 裝指定版本
+bash install.sh --to ~/.local/bin    # 非 root 時裝到自訂目錄
 ```
 
 第一次進入選單選 `1` 一鍵部署 —— 填網域(可留空)、選模型提供商,其餘它自己做完。
@@ -200,15 +201,38 @@ hermes-vps                              # 之後一句就打開選單
 ## 🏗 架構與落盤
 
 ```
-hermes-vps.sh                 ← 唯一交付物:單檔內按職責分區
-  ├─ 核心層                  日誌 / 顏色 / 輸入原語 / 狀態儲存 / 以服務使用者執行
-  ├─ 系統層                  發行版探測 / 相依 / swap 保護 / 網路加速 / 防火牆
-  ├─ 模型層                  提供商資料表 + 直連校驗 + 真實對話驗證
-  ├─ 平台層                  平台資料表 + 廠商 API 驗票 + 腳本內掃碼
-  ├─ 面板與 Caddy 層         認證閘門 / systemd 單元 / Caddyfile 產生與憑證
-  ├─ 維運層                  備份還原 / 更新 / 自檢 / 卸載
-  └─ 介面層                  橫幅 / 狀態面板 / 選單 / 入口 / 自檢
+原始碼(倉庫裡只有這些;發布產物由 CI 產生,不入庫)
+  lib/00-common.sh       核心:常數 / 顏色 / 日誌 / 輸入原語 / 狀態儲存 / 以服務使用者執行
+  lib/10-input.sh        互動原語(純文字,無 whiptail)
+  lib/11-state.sh        鍵值儲存 / 狀態 / 憑證
+  lib/12-run.sh          以服務使用者身分執行
+  lib/20-system.sh       發行版探測 / 相依 / swap 保護
+  lib/21-mirror.sh       網路加速(GitHub / PyPI 測速選優)
+  lib/22-firewall.sh     防火牆(只增不減)
+  lib/23-probe.sh        通用探測(埠 / 服務 / 公網 IP / 網域解析)
+  lib/30-hermes.sh       服務使用者 + Hermes 安裝與更新
+  lib/31-model.sh        模型提供商表 + 兩級連通驗證
+  lib/40-platform.sh     訊息平台表 + 廠商 API 驗票 + 腳本內掃碼
+  lib/50-webui.sh        面板認證閘門 / 憑證 / 公網位址
+  lib/51-service.sh      systemd 單元與服務控制
+  lib/52-caddy.sh        Caddy 安裝 / 產生 / 校驗 / 憑證
+  lib/60-backup.sh       備份還原 / 更新與自動更新
+  lib/61-doctor.sh       自檢診斷(22 項)
+  lib/62-lifecycle.sh    卸載(逐項確認)
+  lib/70-ui.sh           橫幅 / 狀態面板 / 各選單
+  lib/71-deploy.sh       一鍵部署編排
+  lib/72-help.sh         使用說明
+  lib/80-cli.sh          參數解析與子命令分發
+  lib/90-selftest.sh     腳本自檢
+  bin/hermes-vps         入口(開發時直接 `bash bin/hermes-vps` 會自動載入 lib/)
+  build.sh               拼裝成 dist/hermes-vps.sh
+  install.sh             從 Release 安裝 / 升級(自動取最新版 + sha256 校驗)
+  tests/                 lint / smoke / strict / 真實 caddy 校驗 / 路由行為 / 真機驗收
+  VERSION                版本號;打 tag 必須是 v$VERSION
+  .github/workflows/     ci.yml(全量測試) + release.yml(打 tag 時建置並發布)
 ```
+
+**發布流程**:改 `VERSION` → 打 tag `v$VERSION` → Actions 跑全量測試、建置 `hermes-vps.sh`、產生 `.sha256` 並建立 Release。使用者端只需 `install.sh`,永遠拿到同一份自包含腳本。
 
 | 路徑 | 內容 |
 |---|---|

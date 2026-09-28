@@ -54,15 +54,16 @@ The UI is a **plain text menu** — type a number and you are done. No dialog bo
 # 1) Log in to your server
 ssh root@<your-server>
 
-# 2) Download it (or scp the file up)
-curl -fsSL https://raw.githubusercontent.com/MinimaxFlora/hermes-agent-deploy/main/hermes-vps.sh -o /root/hermes-vps.sh
+# 2) Install (picks up the latest Release, verifies sha256, installs to /usr/local/bin)
+curl -fsSL https://raw.githubusercontent.com/MinimaxFlora/hermes-agent-deploy/main/install.sh | bash
 
-# 3) Run it
-bash /root/hermes-vps.sh
+# 3) Open the menu (choose 1 on first run)
+hermes-vps
 
-# 4) Optional: make it a command
-bash /root/hermes-vps.sh self-install   # installs /usr/local/bin/hermes-vps
-hermes-vps                              # opens the menu from anywhere
+# Other options
+bash install.sh --check              # show installed vs latest
+bash install.sh --version v1.0.0       # install a specific version
+bash install.sh --to ~/.local/bin    # install somewhere else (non-root)
 ```
 
 Pick `1` (one-click deploy) the first time: enter a domain (optional), choose a model provider, and the script does the rest. Expect 5–15 minutes depending on the machine and network.
@@ -198,15 +199,38 @@ After configuring, the tool restarts the gateway, summarises the connection log 
 ## 🏗 Architecture & on-disk layout
 
 ```
-hermes-vps.sh                ← the only deliverable: one file, sections by responsibility
-  ├─ core                    logging / colours / input primitives / state store / run-as-service-user
-  ├─ system                  distro detection / dependencies / swap guard / mirrors / firewall
-  ├─ models                  provider data table + direct check + real conversation test
-  ├─ platforms               platform data table + vendor API verification + in-script QR
-  ├─ dashboard & Caddy       auth gate / systemd units / Caddyfile rendering & certificates
-  ├─ operations              backup-restore / update / diagnose / uninstall
-  └─ UI                      banner / status panel / menus / entrypoint / selftest
+Source (this is all the repo contains; the release artifact is built by CI and never committed)
+  lib/00-common.sh       core: constants / colours / logging / input primitives / state / run-as-service-user
+  lib/10-input.sh        interactive primitives (plain text, no whiptail)
+  lib/11-state.sh        key-value store / tool state / credentials
+  lib/12-run.sh          run commands as the service user
+  lib/20-system.sh       distro detection / dependencies / swap guard
+  lib/21-mirror.sh       network mirrors (GitHub / PyPI benchmarking)
+  lib/22-firewall.sh     firewall (add-only)
+  lib/23-probe.sh        probes (ports / services / public IP / DNS)
+  lib/30-hermes.sh       service user + Hermes install & update
+  lib/31-model.sh        provider table + two-stage connectivity verification
+  lib/40-platform.sh     platform table + vendor API verification + in-script QR
+  lib/50-webui.sh        dashboard auth gate / credentials / public URL
+  lib/51-service.sh      systemd units and service control
+  lib/52-caddy.sh        Caddy install / render / validate / certificates
+  lib/60-backup.sh       backup & restore / updates and auto-update
+  lib/61-doctor.sh       health check (22 items)
+  lib/62-lifecycle.sh    uninstall (per-path confirmation)
+  lib/70-ui.sh           banner / status panel / menus
+  lib/71-deploy.sh       one-click deploy orchestration
+  lib/72-help.sh         help text
+  lib/80-cli.sh          argument parsing and subcommand dispatch
+  lib/90-selftest.sh     self-test
+  bin/hermes-vps         entrypoint (`bash bin/hermes-vps` loads lib/ in dev)
+  build.sh               assembles dist/hermes-vps.sh
+  install.sh             install / upgrade from Releases (latest + sha256 check)
+  tests/                 lint / smoke / strict / real caddy validation / routing / acceptance
+  VERSION                version number; tags must be v$VERSION
+  .github/workflows/     ci.yml (full test suite) + release.yml (build & publish on tag)
 ```
+
+**Release flow**: bump `VERSION` → push tag `v$VERSION` → Actions runs the full suite, builds `hermes-vps.sh`, writes `.sha256` and creates the Release. Users only ever run `install.sh` and always get the same self-contained script.
 
 | Path | Contents |
 |---|---|

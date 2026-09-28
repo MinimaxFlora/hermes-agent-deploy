@@ -1,11 +1,14 @@
-# 保证 shell 脚本在任何平台克隆出来都是 LF —— CRLF 会让 Linux 上的 bash 直接报错
+# 保证脚本在任何平台克隆出来都是 LF —— CRLF 会让 Linux 上的 bash 直接报错
 * text=auto
 *.sh            text eol=lf
-*.conf          text eol=lf
 *.tpl           text eol=lf
 *.example       text eol=lf
 *.md            text eol=lf
+*.yml           text eol=lf
+*.py            text eol=lf
+lib/*           text eol=lf
 bin/*           text eol=lf
-install.sh      text eol=lf
 tests/*         text eol=lf
-Makefile        text eol=lf
+build.sh        text eol=lf
+install.sh      text eol=lf
+VERSION         text eol=lf

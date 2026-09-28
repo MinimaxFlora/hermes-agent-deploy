@@ -54,15 +54,16 @@ UI は**プレーンテキストのメニュー**。番号を入力するだけ�
 # 1) サーバーにログイン
 ssh root@<あなたのサーバー>
 
-# 2) ダウンロード(または scp でアップロード)
-curl -fsSL https://raw.githubusercontent.com/MinimaxFlora/hermes-agent-deploy/main/hermes-vps.sh -o /root/hermes-vps.sh
+# 2) インストール(最新 Release を取得し sha256 検証のうえ /usr/local/bin に入れます)
+curl -fsSL https://raw.githubusercontent.com/MinimaxFlora/hermes-agent-deploy/main/install.sh | bash
 
-# 3) 実行
-bash /root/hermes-vps.sh
+# 3) メニューを開く(初回は 1 を選択)
+hermes-vps
 
-# 4) 任意:コマンド化
-bash /root/hermes-vps.sh self-install   # /usr/local/bin/hermes-vps に導入
-hermes-vps                              # 以後はこれだけでメニューが開きます
+# その他
+bash install.sh --check              # 導入済みと最新版の比較
+bash install.sh --version v1.0.0       # バージョン指定
+bash install.sh --to ~/.local/bin    # 非 root なら任意のディレクトリへ
 ```
 
 最初はメニューの `1`(ワンクリック導入)を選択してください。ドメイン(空欄可)とモデルプロバイダーを入力すれば、あとは自動です。所要 5〜15 分(マシンとネットワーク次第)。
@@ -198,15 +199,38 @@ hermes-vps                              # 以後はこれだけでメニュー�
 ## 🏗 アーキテクチャと保存先
 
 ```
-hermes-vps.sh                ← 唯一の成果物:1 ファイル内を責務ごとに区間分け
-  ├─ コア層                 ログ / 色 / 入力プリミティブ / 状態保存 / サービスユーザー実行
-  ├─ システム層             ディストリビューション検出 / 依存 / swap 保護 / ミラー / ファイアウォール
-  ├─ モデル層               プロバイダーデータ表 + 直接検証 + 実会話テスト
-  ├─ プラットフォーム層     データ表 + ベンダー API 検証 + スクリプト内 QR
-  ├─ ダッシュボード & Caddy 認証ゲート / systemd ユニット / Caddyfile 生成と証明書
-  ├─ 運用層                 バックアップ復元 / 更新 / 自己診断 / アンインストール
-  └─ UI 層                  バナー / ステータスパネル / メニュー / エントリポイント / selftest
+ソース(リポジトリにあるのはこれだけ。リリース成果物は CI が生成し、コミットしません)
+  lib/00-common.sh       コア:定数 / 色 / ログ / 入力プリミティブ / 状態保存 / サービスユーザー実行
+  lib/10-input.sh        対話プリミティブ(プレーンテキスト、whiptail 不使用)
+  lib/11-state.sh        キー値ストア / 状態 / 認証情報
+  lib/12-run.sh          サービスユーザーとして実行
+  lib/20-system.sh       ディストリビューション検出 / 依存 / swap 保護
+  lib/21-mirror.sh       ミラー(GitHub / PyPI のベンチマーク)
+  lib/22-firewall.sh     ファイアウォール(追加のみ)
+  lib/23-probe.sh        各種検査(ポート / サービス / グローバル IP / DNS)
+  lib/30-hermes.sh       サービスユーザー + Hermes の導入と更新
+  lib/31-model.sh        プロバイダー表 + 2 段階の接続検証
+  lib/40-platform.sh     プラットフォーム表 + ベンダー API 検証 + スクリプト内 QR
+  lib/50-webui.sh        ダッシュボード認証ゲート / 認証情報 / 公開 URL
+  lib/51-service.sh      systemd ユニットとサービス制御
+  lib/52-caddy.sh        Caddy の導入 / 生成 / 検証 / 証明書
+  lib/60-backup.sh       バックアップ復元 / 更新と自動更新
+  lib/61-doctor.sh       ヘルスチェック(22 項目)
+  lib/62-lifecycle.sh    アンインストール(パスごとに確認)
+  lib/70-ui.sh           バナー / ステータスパネル / メニュー
+  lib/71-deploy.sh       ワンクリック導入の編成
+  lib/72-help.sh         ヘルプ
+  lib/80-cli.sh          引数解析とサブコマンド振り分け
+  lib/90-selftest.sh     セルフテスト
+  bin/hermes-vps         エントリポイント(開発時は `bash bin/hermes-vps` で lib/ を読み込み)
+  build.sh               dist/hermes-vps.sh を組み立てる
+  install.sh             Release からの導入 / 更新(最新版 + sha256 検証)
+  tests/                 lint / smoke / strict / 実 caddy 検証 / ルーティング / 受け入れ
+  VERSION                バージョン。タグは v$VERSION でなければなりません
+  .github/workflows/     ci.yml(全テスト) + release.yml(タグ時にビルド & 公開)
 ```
+
+**リリース手順**:`VERSION` を上げる → タグ `v$VERSION` を push → Actions が全テストを実行し、`hermes-vps.sh` をビルドして `.sha256` を添えて Release を作成します。利用者は `install.sh` だけで常に同じ自己完結スクリプトを得られます。
 
 | パス | 内容 |
 |---|---|

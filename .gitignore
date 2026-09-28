@@ -1,3 +1,11 @@
-Caddyfile
+# 发布产物:由 GitHub Actions / build.sh 生成,不入库
+dist/
+
+# 本地临时文件
+*.tmp
 *.bak
-.bak/
+.hv-*
+
+# 编辑器/系统
+.DS_Store
+Thumbs.db
