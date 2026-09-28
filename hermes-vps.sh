@@ -876,11 +876,27 @@ import sys
 
 
 def _dump(path, data):
-    try:
-        with open(path, "w", encoding="utf-8") as fh:
-            json.dump(data or {}, fh, ensure_ascii=False)
-    except Exception as exc:  # pragma: no cover
-        print("  结果落盘失败: %s" % exc)
+    """写结果文件;失败时退到 HERMES_HOME 下再试,最后把凭据打到终端。返回是否落盘成功。"""
+    candidates = [path]
+    home = os.environ.get("HERMES_HOME") or ""
+    if home:
+        candidates.append(os.path.join(home, os.path.basename(path)))
+    for target in candidates:
+        try:
+            with open(target, "w", encoding="utf-8") as fh:
+                json.dump(data or {}, fh, ensure_ascii=False)
+            try:
+                os.chmod(target, 0o600)
+            except Exception:
+                pass
+            print("  结果已保存: %s" % target)
+            return True
+        except Exception as exc:
+            print("  结果落盘失败(%s): %s" % (target, exc))
+    print("  !! 无法自动保存,请手工记下以下内容,然后在菜单里选 2) 手填凭据:")
+    for k, v in (data or {}).items():
+        print("     %s = %s" % (k, v))
+    return False
 
 
 def run_qq(out_path, timeout):
@@ -975,8 +991,9 @@ platform_qr_onboard() {
     hermes_installed || { warn "请先部署(菜单 1)"; pause; return 1; }
     platform_qr_deps_ensure || true
 
-    local out="$ETC_DIR/onboard-${id}.json"
-    rm -f "$out"; : >"$out"; chmod 600 "$out"
+    # 结果文件必须让 hermes 用户能写:放服务用户家目录($UHOME),root 读走后即删
+    local out="$UHOME/onboard-${id}.json"
+    rm -f "$out"
     local mod="" rc=0
     mod="$(_qr_module_write)" || { pause; return 1; }
     step "正在申请二维码(用手机扫码完成授权)"
@@ -999,7 +1016,11 @@ platform_qr_onboard() {
     if [[ "$id" == "qqbot" ]]; then
         local app_id secret openid
         app_id="$(json_get "$out" app_id)"; secret="$(json_get "$out" client_secret)"; openid="$(json_get "$out" user_openid)"
-        if [[ -z "$app_id" || -z "$secret" ]]; then warn "返回结果不完整,未写入"; rm -f "$out"; pause; return 1; fi
+        if [[ -z "$app_id" || -z "$secret" ]]; then
+            warn "返回结果不完整,未写入"
+            dim "若上面打印了 app_id / client_secret,可在本菜单选 2) 手填凭据写入"
+            rm -f "$out"; pause; return 1
+        fi
         env_set QQ_APP_ID "$app_id"
         env_set QQ_CLIENT_SECRET "$secret"
         ok "已写入 QQ_APP_ID / QQ_CLIENT_SECRET(AppID:$app_id)"
@@ -1020,7 +1041,11 @@ platform_qr_onboard() {
         local account token base user_id
         account="$(json_get "$out" account_id)"; token="$(json_get "$out" token)"
         base="$(json_get "$out" base_url)"; user_id="$(json_get "$out" user_id)"
-        if [[ -z "$account" ]]; then warn "返回结果不完整,未写入"; rm -f "$out"; pause; return 1; fi
+        if [[ -z "$account" ]]; then
+            warn "返回结果不完整,未写入"
+            dim "若上面打印了 account_id / token,可在本菜单选 2) 手填凭据写入"
+            rm -f "$out"; pause; return 1
+        fi
         env_set WEIXIN_ACCOUNT_ID "$account"
         env_set WEIXIN_TOKEN "$token"
         [[ -n "$base" ]] && env_set WEIXIN_BASE_URL "$base"
