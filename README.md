@@ -334,7 +334,8 @@ uv/PyPI 索引,后续 `hermes update` 也走加速。
 |---|---|
 | 全部脚本语法、数据表格式、模块加载、危险 `rm` 扫描 | 已在本机跑通(`bash tests/lint.sh`) |
 | 键值/状态读写、提供商与平台表解析、Caddyfile 渲染、CLI 子命令 | 已有冒烟测试并通过(`bash tests/smoke.sh`) |
-| 生成的 Caddyfile 能否被 Caddy 接受 | 需用真实 `caddy validate` 验证(见下) |
+| 生成的 Caddyfile 语法 | 已用真实 caddy v2.11.4 校验通过(4 种组合:开/关 API × 默认/自定义 ACME) |
+| Caddy 路由行为(健康检查/API/面板分流) | 有 `tests/caddy-routing.sh`,需在装了 caddy 的机器上跑 |
 | 完整一键部署(装 Hermes、起服务、签证书、连机器人) | **需要在真实 VPS 上跑一遍才能算完成** |
 
 本工具的目标平台是 Linux VPS(Debian/Ubuntu),开发机上无法完整验证的部分包括:
@@ -344,6 +345,10 @@ uv/PyPI 索引,后续 `hermes update` 也走加速。
 ```bash
 # 1) 静态自检(不装任何东西)
 bash tests/lint.sh && bash tests/smoke.sh
+
+# 1b) Caddy 配置:语法 + 路由(需要 caddy 二进制;本工具装完 Caddy 后即可跑)
+bash tests/caddyfile-validate.sh /usr/bin/caddy
+bash tests/caddy-routing.sh /usr/bin/caddy
 
 # 2) 无人值守部署(会真的装)
 sudo hermes-vps install --config /etc/hermes-vps/hermes-vps.conf --non-interactive --yes

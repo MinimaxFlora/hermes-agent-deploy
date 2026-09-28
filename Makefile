@@ -4,11 +4,12 @@
 SHELL := /bin/bash
 FILES := $(wildcard lib/*.sh) bin/hermes-vps install.sh tests/*.sh
 
-.PHONY: help lint test check fmt install-local
+.PHONY: help lint test test-caddy check fmt install-local
 
 help:
 	@echo "make lint         语法 + 数据文件 + 模块加载检查"
 	@echo "make test         无需 root 的逻辑冒烟测试"
+	@echo "make test-caddy   用真实 caddy 校验生成配置的语法与路由(需 caddy 二进制)"
 	@echo "make check        lint + test"
 	@echo "make fmt          用 shfmt 格式化(需自行安装 shfmt)"
 	@echo "make install-local 把当前仓库装成系统命令 /usr/local/bin/hermes-vps"
@@ -18,6 +19,10 @@ lint:
 
 test:
 	@bash tests/smoke.sh
+
+test-caddy:
+	@bash tests/caddyfile-validate.sh
+	@bash tests/caddy-routing.sh
 
 check: lint test
 
