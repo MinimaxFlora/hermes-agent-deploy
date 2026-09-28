@@ -116,35 +116,50 @@ hv_backup_restore() {
     printf '    %s            (Hermes 数据:config/记忆/技能/会话/凭据)\n' "$HV_UHOME"
     printf '    /etc/hermes-vps/      (本工具状态;仅当包内存在时)\n'
     printf '    /etc/caddy/Caddyfile  (仅当包内存在时)\n'
-    hv_info "现有数据不会被删除:会先改名为 ${HV_UHOME}.pre-restore-<时间戳> 保留"
+    hv_info "采用就地合并:代码与 tools 不在备份里,会原样保留,不会被清空"
+    hv_info "被覆盖的旧内容会先挪到 ${HV_UHOME}.pre-restore-<时间戳>/ 以便回滚"
 
     hv_confirm "确认继续恢复?" no || return 0
 
     hv_has_systemd && { systemctl stop hermes-gateway hermes-dashboard 2>/dev/null || true; }
 
     local ts; ts="$(date +%Y%m%d-%H%M%S)"
-    if [[ -d "$HV_UHOME" ]]; then
-        mv "$HV_UHOME" "${HV_UHOME}.pre-restore-${ts}"
-        hv_info "已挪走旧数据:${HV_UHOME}.pre-restore-${ts}"
-    fi
-    install -d -o "$HV_USER" -g "$HV_USER" -m 700 "$HV_UHOME"
-
+    local aside="${HV_UHOME}.pre-restore-${ts}"
     local tmp; tmp="$(mktemp -d)"
+    trap 'rm -rf "$tmp"' RETURN
+
     tar xzf "$archive" -C "$tmp"
-    if [[ -d "$tmp/$(basename "$HV_UHOME")" ]]; then
-        cp -a "$tmp/$(basename "$HV_UHOME")/." "$HV_UHOME/"
-    elif [[ -d "$tmp/.hermes" ]]; then
-        cp -a "$tmp/.hermes/." "$HV_UHOME/"
+
+    # 备份包里的 .hermes 根(兼容两种打包路径)
+    local src="$tmp/$(basename "$HV_UHOME")"
+    [[ -d "$src" ]] || src="$tmp/.hermes"
+
+    if [[ -d "$src" ]]; then
+        install -d -m 700 "$aside"
+        local entry name
+        shopt -s dotglob nullglob
+        for entry in "$src"/*; do
+            name="$(basename "$entry")"
+            # 只把"将被覆盖"的现存条目挪走(代码/tools 不在包里,自然不受影响)
+            if [[ -e "$HV_UHOME/$name" ]]; then
+                mv "$HV_UHOME/$name" "$aside/$name"
+                hv_dim "   挪走 $name"
+            fi
+        done
+        shopt -u dotglob nullglob
+        cp -a "$src/." "$HV_UHOME/"
     fi
+
     [[ -d "$tmp/etc" ]] && cp -a "$tmp/etc/." "$HV_ETC/" 2>/dev/null || true
     [[ -f "$tmp/etc/Caddyfile" ]] && cp -p "$tmp/etc/Caddyfile" /etc/caddy/Caddyfile 2>/dev/null || true
     [[ -d "$tmp/systemd" ]] && cp -a "$tmp/systemd/"*.service /etc/systemd/system/ 2>/dev/null || true
-    rm -rf "$tmp"
 
     chown -R "$HV_USER:$HV_USER" "$HV_USER_HOME" 2>/dev/null || true
+    chmod 600 "$HV_UHOME/.env" 2>/dev/null || true
     hv_systemd_reload
     hv_has_systemd && { systemctl start hermes-gateway hermes-dashboard 2>/dev/null || true; }
-    hv_ok "恢复完成。校验:hermes-vps doctor"
+    hv_ok "恢复完成(回滚点:$aside)"
+    hv_info "校验:hermes-vps doctor"
 }
 
 # 定时备份(可选):每天 03:30
