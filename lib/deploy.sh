@@ -108,6 +108,7 @@ hv_deploy() {
 
     hv_step "2/10 安装基础依赖"
     hv_deps_install_base
+    hv_deps_guard_memory   # ≤1.5GB 内存且无 swap 时补 swapfile,避免装 Python/依赖时 OOM
 
     hv_step "3/10 网络加速探测"
     hv_mirror_probe
