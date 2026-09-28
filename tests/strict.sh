@@ -76,6 +76,21 @@ try "kv_set 新键"         hv_kv_set "$SB/k.env" K V
 try "kv_set 覆盖键"       hv_kv_set "$SB/k.env" K V2
 try "kv_unset 不存在的键" hv_kv_unset "$SB/k.env" NOPE
 
+echo "── ERR 陷阱与 set +e 容错路径 ──"
+# 1) 容错路径:陷阱不得中止脚本,且 rc 必须保留真实退出码(服务安装的多级回退依赖这个)
+set +e
+_hv_test_fail() { return 7; }
+_hv_test_fail
+rc=$?
+set -e
+[[ "$rc" == "7" ]] && ok "set +e 容错路径可继续执行,rc 保留真实退出码" || bad "rc=$rc,期望 7"
+# 2) 致命路径:set -e 下的失败必须中止(子 shell 里验证,避免影响本测试)
+if ( bash -c 'source "$1/lib/common.sh"; hv_install_trap; false; echo "不该执行到这里"' _ "$ROOT" >/dev/null 2>&1 ); then
+    bad "set -e 下的失败没有中止脚本(错误陷阱失效)"
+else
+    ok "set -e 下的失败会中止脚本(错误陷阱生效)"
+fi
+
 echo
 if [[ $fail -eq 0 ]]; then printf '\033[32m严格模式测试全部通过\033[0m\n'; else printf '\033[31m%d 项失败\033[0m\n' "$fail"; fi
 exit "$fail"

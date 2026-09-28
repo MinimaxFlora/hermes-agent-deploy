@@ -90,9 +90,16 @@ hv_dim()  { printf '%s\n' "${HV_C_DIM}$*${HV_C_RESET}"; }
 hv_die() { hv_err "$*"; exit 1; }
 
 # 错误定位:打印模块 + 行号 + 日志路径,便于用户回报
+# 重要:只在 errexit(set -e)开启时才终止。
+# 代码里用 `set +e; cmd; rc=$?` 主动容错的片段(例如服务安装的多级回退、
+# 探测类命令)不能因为 ERR 陷阱直接退出,否则回退逻辑永远走不到。
 hv_on_error() {
     local code=$? line=${1:-?} cmd=${2:-?}
     [[ $code -eq 0 ]] && return 0
+    case "$-" in
+        *e*) : ;;
+        *)   return 0 ;;   # errexit 已关闭 = 调用方自己处理返回值
+    esac
     hv_err "执行失败(退出码 ${code})"
     hv_err "位置: ${BASH_SOURCE[2]:-?}:${line}  →  ${cmd}"
     local f; f="$(_hv_logfile)"
