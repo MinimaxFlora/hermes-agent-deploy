@@ -131,18 +131,27 @@ hv_can_interact() {
 }
 
 # 随机串:优先 openssl,退回 /dev/urandom
+# head 提前关闭管道会让上游收到 SIGPIPE,在 pipefail 下会算失败,所以统一兜住
 hv_random() {
-    local n="${1:-16}"
+    local n="${1:-16}" out=""
     if hv_have openssl; then
-        openssl rand -base64 48 | tr -dc 'A-Za-z0-9' | head -c "$n"
-    else
-        tr -dc 'A-Za-z0-9' </dev/urandom | head -c "$n"
+        out="$(openssl rand -base64 96 2>/dev/null | tr -dc 'A-Za-z0-9' | head -c "$n" 2>/dev/null)" || out=""
     fi
+    if [[ -z "$out" ]]; then
+        out="$(tr -dc 'A-Za-z0-9' </dev/urandom 2>/dev/null | head -c "$n" 2>/dev/null)" || out=""
+    fi
+    printf '%s' "$out"
 }
 
 hv_random_hex() {
-    local n="${1:-32}"
-    if hv_have openssl; then openssl rand -hex "$n"; else head -c "$n" /dev/urandom | od -An -tx1 | tr -d ' \n'; fi
+    local n="${1:-32}" out=""
+    if hv_have openssl; then
+        out="$(openssl rand -hex "$n" 2>/dev/null)" || out=""
+    fi
+    if [[ -z "$out" ]]; then
+        out="$(head -c "$n" /dev/urandom 2>/dev/null | od -An -tx1 | tr -d ' \n')" || out=""
+    fi
+    printf '%s' "$out"
 }
 
 # 备份一个文件(改动前调用),保留最近 5 份
@@ -172,10 +181,17 @@ hv_kv_set() {
 
 hv_kv_get() {
     local file="$1" key="$2" def="${3:-}"
-    [[ -f "$file" ]] || { printf '%s' "$def"; return 0; }
-    local v
-    v="$(grep -E "^[[:space:]]*(export[[:space:]]+)?${key}=" "$file" | tail -n1 | sed -E "s|^[[:space:]]*(export[[:space:]]+)?${key}=||")"
-    v="${v%\"}"; v="${v#\"}"
+    local v="" line=""
+    if [[ -f "$file" ]]; then
+        # 注意:入口脚本开了 set -o pipefail,grep 无匹配会返回 1,
+        # 因此这里必须显式兜住,否则"读不存在的键"会直接中止整个脚本。
+        line="$(grep -E "^[[:space:]]*(export[[:space:]]+)?${key}=" "$file" 2>/dev/null | tail -n1)" || line=""
+        if [[ -n "$line" ]]; then
+            v="${line#*=}"
+            v="${v%\"}"; v="${v#\"}"
+            v="${v%\'}"; v="${v#\'}"
+        fi
+    fi
     [[ -n "$v" ]] && printf '%s' "$v" || printf '%s' "$def"
 }
 

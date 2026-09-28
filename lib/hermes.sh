@@ -16,7 +16,9 @@ HV_INSTALL_LOG="${HV_UHOME}/logs/install.log"
 
 hv_hermes_version() {
     hv_hermes_installed || return 1
-    hv_run_as_user "$HV_USER" env "HERMES_HOME=$HV_UHOME" "$HV_HERMES_BIN" --version 2>/dev/null | head -n1
+    local out=""
+    out="$(hv_run_as_user "$HV_USER" env "HERMES_HOME=$HV_UHOME" "$HV_HERMES_BIN" --version 2>/dev/null | head -n1)" || out=""
+    [[ -n "$out" ]] && printf '%s' "$out"
 }
 
 hv_hermes_installed() { [[ -x "$HV_HERMES_BIN" ]]; }
