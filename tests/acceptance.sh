@@ -19,6 +19,8 @@ source "${ROOT}/lib/common.sh"
 source "${ROOT}/lib/webui.sh"
 
 DOMAIN="${1:-$(hv_state_get DOMAIN "")}"
+HV_INSTALLED_BIN="${HV_INSTALLED_BIN:-/usr/local/bin/hermes-vps}"
+export HV_INSTALLED_BIN
 pass=0; fail=0; skip=0
 ok()   { printf '\033[32m✔\033[0m %s\n' "$1"; pass=$((pass+1)); }
 bad()  { printf '\033[31m✘\033[0m %s\n' "$1"; fail=$((fail+1)); }
@@ -52,6 +54,17 @@ for u in hermes-gateway.service hermes-dashboard.service caddy.service; do
 done
 gw_user="$(systemctl show -p User --value hermes-gateway.service 2>/dev/null | tr -d '\r')"
 [[ "$gw_user" == "$HV_USER" ]] && ok "网关以 $HV_USER 身份运行" || bad "网关运行用户是 '${gw_user:-root}',不是 $HV_USER"
+
+# Caddy 常以非 root 用户运行;日志目录不可写会让它启动即退出(真机踩过)
+caddy_user="$(systemctl show -p User --value caddy.service 2>/dev/null | tr -d '\r')"
+[[ -z "$caddy_user" || "$caddy_user" == "root" ]] && caddy_user="caddy"
+if id "$caddy_user" >/dev/null 2>&1; then
+    if su -s /bin/sh "$caddy_user" -c 'test -w /var/log/caddy' 2>/dev/null; then
+        ok "Caddy 运行用户 $caddy_user 可写 /var/log/caddy"
+    else
+        bad "Caddy 运行用户 $caddy_user 无法写 /var/log/caddy —— 服务会启动失败(hermes-vps domain apply 可修复)"
+    fi
+fi
 
 head_ "3. 端口绑定(只应绑回环)"
 for p in "$HV_DASH_PORT" "$HV_API_PORT"; do

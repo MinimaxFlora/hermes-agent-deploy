@@ -113,6 +113,29 @@ hv_caddy_ensure_user() {
     install -d -o caddy -g caddy -m 700 /var/lib/caddy 2>/dev/null || true
 }
 
+# 运行期前置条件:日志目录存在且属 Caddy 运行用户、证书存储目录可写。
+# 必须独立于"是否刚装 Caddy"——apt 包不会建 /var/log/caddy,
+# 而 Caddy 是以 caddy 用户运行的,写不进日志目录就直接启动失败。
+hv_caddy_prepare_runtime() {
+    hv_require_root
+    local u="caddy"
+    if hv_has_systemd && systemctl cat caddy.service >/dev/null 2>&1; then
+        local su; su="$(systemctl show -p User --value caddy.service 2>/dev/null | tr -d '\r')"
+        [[ -n "$su" && "$su" != "root" ]] && u="$su"
+    fi
+    if ! id "$u" >/dev/null 2>&1; then
+        hv_caddy_ensure_user
+        u="caddy"
+    fi
+    if ! install -d -o "$u" -g "$u" -m 750 "$HV_CADDY_LOG_DIR" 2>/dev/null; then
+        install -d -m 755 "$HV_CADDY_LOG_DIR"
+        hv_warn "无法把 $HV_CADDY_LOG_DIR 归属给 $u,已建为 755(若仍写不进日志,Caddy 会启动失败)"
+    fi
+    install -d -o "$u" -g "$u" -m 700 /var/lib/caddy 2>/dev/null || true
+    hv_state_set CADDY_RUN_USER "$u"
+    return 0
+}
+
 # 二进制安装时补一个 systemd 单元(apt 包自带,不覆盖)
 hv_caddy_write_unit() {
     hv_has_systemd || return 0
@@ -192,6 +215,7 @@ hv_caddy_render() {
 hv_caddy_write_config() {
     local domain="$1" email="$2" with_api="$3" acme_ca="${4:-}"
     hv_require_root
+    hv_caddy_prepare_runtime   # 日志/证书目录必须先就绪,否则 Caddy 起来就退出
 
     if [[ -f "$HV_CADDYFILE" ]] && ! grep -q "managed-by: hermes-vps" "$HV_CADDYFILE"; then
         hv_warn "现有 $HV_CADDYFILE 不是本工具生成的(通常是发行版自带示例配置)"
