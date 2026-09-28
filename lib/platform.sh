@@ -102,6 +102,34 @@ hv_platform_ask_vars() {
     fi
 }
 
+# 非交互直写:hermes-vps platform set <id> KEY=VALUE [KEY=VALUE ...]
+# 适合脚本化/CI:写 .env 并启用平台,值不回显
+hv_platform_set() {
+    local id="$1"; shift
+    hv_platform_line "$id" >/dev/null || hv_die "未知平台:$id(可用 hermes-vps platform list 查看)"
+    local kv k v
+    for kv in "$@"; do
+        k="${kv%%=*}"; v="${kv#*=}"
+        if [[ -z "$k" || "$k" == "$kv" ]]; then
+            hv_die "参数格式应为 KEY=VALUE,收到:$kv"
+        fi
+        hv_env_set "$k" "$v"
+        hv_ok "已写入 $k($(hv_platform_name "$id"))"
+    done
+    hv_platform_enable "$id" true
+    hv_dim "   重启网关后生效:hermes-vps service restart gateway"
+}
+
+hv_platform_unset() {
+    local id="$1"; shift
+    hv_platform_line "$id" >/dev/null || hv_die "未知平台:$id"
+    local k
+    for k in "$@"; do
+        hv_env_unset "$k"
+        hv_ok "已移除 $k"
+    done
+}
+
 # 交互式配置一个平台
 hv_platform_configure() {
     local id="${1:-}"

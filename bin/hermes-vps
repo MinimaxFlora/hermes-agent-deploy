@@ -42,6 +42,8 @@ hermes-vps —— Hermes Agent VPS 一键部署与管理
   model list|show|configure      模型提供商
   platform list|status|configure <id>|setup <id>
                                  消息平台(QQ/微信/企业微信/TG/飞书/钉钉/Slack…)
+  platform set <id> KEY=VAL…     非交互直写平台凭据并启用(脚本化用)
+  platform unset <id> KEY…       移除平台凭据
   web show|password|api on|off   面板与 OpenAI 兼容 API
   domain set <域名>|apply|status 域名、证书与反向代理(Caddy)
   mirror probe|show              网络加速(GitHub / PyPI)探测与查看
@@ -153,7 +155,9 @@ main() {
                 status) hv_platform_status ;;
                 configure) shift; hv_platform_configure "${1:-}" ;;
                 setup) shift; hv_platform_interactive_setup "${1:-}" ;;
-                *) hv_die "用法: hermes-vps platform list|status|configure <id>|setup <id>" ;;
+                set)   shift; hv_platform_set "$@" ;;
+                unset) shift; hv_platform_unset "$@" ;;
+                *) hv_die "用法: hermes-vps platform list|status|configure <id>|setup <id>|set <id> KEY=VAL…|unset <id> KEY…" ;;
             esac
             ;;
         web)
