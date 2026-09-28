@@ -129,6 +129,9 @@ have() { command -v "$1" >/dev/null 2>&1; }
 is_root() { [[ "$RUN_UID" -eq 0 ]]; }
 have_sudo() { command -v sudo >/dev/null 2>&1; }
 mode_label() { if [[ "$HV_MODE" == "system" ]]; then printf '系统级(root)'; else printf '用户态(%s)' "$(id -un)"; fi; }
+# 单元目录与 systemctl:系统级用系统实例,用户态用 systemd --user(单元在 ~/.config/systemd/user)
+unit_dir() { if [[ "$HV_MODE" == "system" ]]; then printf '/etc/systemd/system'; else printf '%s/.config/systemd/user' "$USER_HOME"; fi; }
+sctl() { if [[ "$HV_MODE" == "system" ]]; then systemctl "$@"; else systemctl --user "$@"; fi; }
 
 # 需要特权时:root 直接过;普通用户有 sudo 就提示并原样提权重跑
 require_root() {

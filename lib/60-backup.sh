@@ -43,8 +43,12 @@ backup_create() {
     for u in /etc/systemd/system/hermes-gateway.service /etc/systemd/system/hermes-dashboard.service; do
         [[ -f "$u" ]] && cp -p "$u" "$staged/systemd/" 2>/dev/null || true
     done
-    [[ -d /etc/systemd/system/hermes-dashboard.service.d ]] && cp -r /etc/systemd/system/hermes-dashboard.service.d "$staged/systemd/" 2>/dev/null || true
-    [[ -d /etc/systemd/system/hermes-gateway.service.d ]] && cp -r /etc/systemd/system/hermes-gateway.service.d "$staged/systemd/" 2>/dev/null || true
+    local UD; UD="$(unit_dir)"
+    [[ -d "$UD/hermes-dashboard.service.d" ]] && cp -r "$UD/hermes-dashboard.service.d" "$staged/systemd/" 2>/dev/null || true
+    [[ -d "$UD/hermes-gateway.service.d" ]] && cp -r "$UD/hermes-gateway.service.d" "$staged/systemd/" 2>/dev/null || true
+    mkdir -p "$staged/systemd"
+    cp -p "$UD"/hermes-*.service "$staged/systemd/" 2>/dev/null || true
+    cp -p "$UD"/hermes-vps-autoupdate.* "$staged/systemd/" 2>/dev/null || true
 
     local rc=0
     set +e
@@ -152,7 +156,7 @@ backup_restore() {
         [[ -f "$staged/etc/Caddyfile" ]] && cp -p "$staged/etc/Caddyfile" "$CADDYFILE" 2>/dev/null || true
         ok "状态与 Caddy 配置已恢复"
     }
-    [[ -d "$staged/systemd" ]] && cp -p "$staged"/systemd/*.service /etc/systemd/system/ 2>/dev/null || true
+    [[ -d "$staged/systemd" ]] && cp -p "$staged"/systemd/* "$(unit_dir)/" 2>/dev/null || true
     rm -rf "$staged"
     systemctl daemon-reload 2>/dev/null || true
     systemctl start hermes-gateway hermes-dashboard >/dev/null 2>&1 || true
@@ -164,8 +168,18 @@ backup_restore() {
 }
 
 auto_update_install() {
-    require_root
-    cat >/etc/systemd/system/hermes-vps-autoupdate.service <<EOF
+    local UD; UD="$(unit_dir)"
+    if [[ "$HV_MODE" == "system" ]]; then
+        require_root "安装每日自动更新"
+    else
+        if ! user_systemd_ok; then
+            warn "用户态:当前会话没有 systemd --user(无 DBus),装不了定时器"
+            dim "可自行加 crontab:  30 4 * * * $SELF update --yes --no-restart"
+            return 1
+        fi
+        mkdir -p "$UD"
+    fi
+    cat >"$UD/hermes-vps-autoupdate.service" <<EOF
 [Unit]
 Description=Hermes Agent auto update (managed by hermes-vps)
 After=network-online.target
@@ -174,7 +188,7 @@ After=network-online.target
 Type=oneshot
 ExecStart=$SELF update --yes --no-restart
 EOF
-    cat >/etc/systemd/system/hermes-vps-autoupdate.timer <<'EOF'
+    cat >"$UD/hermes-vps-autoupdate.timer" <<'EOF'
 [Unit]
 Description=Daily Hermes Agent update check
 
@@ -186,21 +200,22 @@ Persistent=true
 [Install]
 WantedBy=timers.target
 EOF
-    chmod 644 /etc/systemd/system/hermes-vps-autoupdate.service /etc/systemd/system/hermes-vps-autoupdate.timer
-    systemctl daemon-reload
-    systemctl enable --now hermes-vps-autoupdate.timer >/dev/null 2>&1 || true
-    local next; next="$(systemctl list-timers hermes-vps-autoupdate.timer --no-pager 2>/dev/null | awk 'NR==2{print $1,$2,$3}')"
+    chmod 644 "$UD/hermes-vps-autoupdate.service" "$UD/hermes-vps-autoupdate.timer"
+    sctl daemon-reload 2>/dev/null || true
+    sctl enable --now hermes-vps-autoupdate.timer >/dev/null 2>&1 || true
+    local next; next="$(sctl list-timers hermes-vps-autoupdate.timer --no-pager 2>/dev/null | awk 'NR==2{print $1,$2,$3}')"
     ok "已启用每日自动更新(04:30 左右)${next:+ · 下次:$next}"
 }
 auto_update_remove() {
-    systemctl disable --now hermes-vps-autoupdate.timer >/dev/null 2>&1 || true
-    rm -f /etc/systemd/system/hermes-vps-autoupdate.timer /etc/systemd/system/hermes-vps-autoupdate.service
-    systemctl daemon-reload 2>/dev/null || true
+    local UD; UD="$(unit_dir)"
+    sctl disable --now hermes-vps-autoupdate.timer >/dev/null 2>&1 || true
+    rm -f "$UD/hermes-vps-autoupdate.timer" "$UD/hermes-vps-autoupdate.service"
+    sctl daemon-reload 2>/dev/null || true
     ok "已关闭自动更新"
 }
 auto_update_status() {
-    if systemctl is-enabled hermes-vps-autoupdate.timer >/dev/null 2>&1; then
-        local next; next="$(systemctl list-timers hermes-vps-autoupdate.timer --no-pager 2>/dev/null | awk 'NR==2{print $1,$2,$3}')"
+    if sctl is-enabled hermes-vps-autoupdate.timer >/dev/null 2>&1; then
+        local next; next="$(sctl list-timers hermes-vps-autoupdate.timer --no-pager 2>/dev/null | awk 'NR==2{print $1,$2,$3}')"
         printf 'enabled%s' "${next:+ · 下次 $next}"
     else
         printf 'disabled'

@@ -3,19 +3,20 @@
 # ---------------------------------------------------------------------------
 uninstall_preview() {
     printf '\n  %s将被处理的路径(逐项确认,可单独跳过):%s\n' "$BD" "$N"
+    local UD; UD="$(unit_dir)"
     local items=(
-      "systemd 单元|/etc/systemd/system/hermes-gateway.service|停用并删除网关服务"
-      "systemd 单元|/etc/systemd/system/hermes-dashboard.service|停用并删除面板服务"
-      "systemd 单元|/etc/systemd/system/hermes-dashboard.service.d|服务覆盖配置目录"
-      "systemd 单元|/etc/systemd/system/hermes-vps-autoupdate.timer|自动更新定时器"
-      "systemd 单元|/etc/systemd/system/hermes-vps-autoupdate.service|自动更新服务"
+      "systemd 单元|$UD/hermes-gateway.service|停用并删除网关服务"
+      "systemd 单元|$UD/hermes-dashboard.service|停用并删除面板服务"
+      "systemd 单元|$UD/hermes-dashboard.service.d|服务覆盖配置目录"
+      "systemd 单元|$UD/hermes-vps-autoupdate.timer|自动更新定时器"
+      "systemd 单元|$UD/hermes-vps-autoupdate.service|自动更新服务"
       "数据目录|$UHOME|Hermes 配置/会话/技能/密钥"
-      "服务用户|$HHOME|hermes 用户家目录"
       "配置目录|$ETC_DIR|本工具状态与凭据"
       "程序目录|$TOOL_LOG_DIR|本工具日志"
       "Caddy|$CADDYFILE|反代配置"
-      "Caddy|/etc/systemd/system/caddy.service|仅当由本工具安装二进制时"
     )
+    # 家目录只属于服务用户:用户态下 $HHOME 就是使用者自己的家目录,绝不能列进去
+    [[ "$HV_MODE" == "system" ]] && items+=("服务用户|$HHOME|hermes 用户家目录" "Caddy|/etc/systemd/system/caddy.service|仅当由本工具安装二进制时")
     local it
     for it in "${items[@]}"; do
         local kind path note
@@ -28,7 +29,7 @@ uninstall_preview() {
 }
 
 uninstall_run() {
-    require_root
+    [[ "$HV_MODE" == "system" ]] && require_root "卸载(系统级)"
     clear_screen
     header "卸载 Hermes 与服务"
     warn "此操作会删除 Hermes 的配置、会话、密钥与技能(备份目录保留)"
@@ -38,26 +39,28 @@ uninstall_run() {
     if confirm "卸载前先创建一个备份?" yes; then backup_create pre-uninstall || warn "备份失败,继续?" ; fi
     confirm "最后确认:开始逐项删除?" no || { info "已取消"; pause; return 0; }
 
+    local UD; UD="$(unit_dir)"
+    local SC="systemctl"; [[ "$HV_MODE" != "system" ]] && SC="systemctl --user"
     local steps=(
-      "hermes-gateway:stop|systemctl stop hermes-gateway; systemctl disable hermes-gateway; rm -f /etc/systemd/system/hermes-gateway.service; rm -rf /etc/systemd/system/hermes-gateway.service.d"
-      "hermes-dashboard:stop|systemctl stop hermes-dashboard; systemctl disable hermes-dashboard; rm -f /etc/systemd/system/hermes-dashboard.service; rm -rf /etc/systemd/system/hermes-dashboard.service.d"
-      "autoupdate|systemctl disable --now hermes-vps-autoupdate.timer; rm -f /etc/systemd/system/hermes-vps-autoupdate.timer /etc/systemd/system/hermes-vps-autoupdate.service"
-      "caddy:stop|systemctl disable --now caddy"
+      "hermes-gateway:stop|$SC stop hermes-gateway; $SC disable hermes-gateway; rm -f $UD/hermes-gateway.service; rm -rf $UD/hermes-gateway.service.d"
+      "hermes-dashboard:stop|$SC stop hermes-dashboard; $SC disable hermes-dashboard; rm -f $UD/hermes-dashboard.service; rm -rf $UD/hermes-dashboard.service.d"
+      "autoupdate|$SC disable --now hermes-vps-autoupdate.timer; rm -f $UD/hermes-vps-autoupdate.timer $UD/hermes-vps-autoupdate.service"
     )
+    [[ "$HV_MODE" == "system" ]] && steps+=("caddy:stop|systemctl disable --now caddy")
     local st
     for st in "${steps[@]}"; do
         local label="${st%%|*}"; local cmd="${st#*|}"
         if confirm "执行:${label}?" yes; then set +e; eval "$cmd" >/dev/null 2>&1; set -e; ok "$label 完成"; else info "跳过 $label"; fi
     done
-    systemctl daemon-reload 2>/dev/null || true
+    sctl daemon-reload 2>/dev/null || true
 
     local paths=(
       "$UHOME|Hermes 数据(配置/会话/技能/密钥)"
-      "$HHOME|hermes 用户家目录"
       "$ETC_DIR|本工具状态与凭据"
       "$TOOL_LOG_DIR|本工具日志"
       "$CADDYFILE|Caddy 反代配置"
     )
+    [[ "$HV_MODE" == "system" ]] && paths+=("$HHOME|hermes 用户家目录")
     local p
     for p in "${paths[@]}"; do
         local path="${p%%|*}" note="${p#*|}"
@@ -69,7 +72,7 @@ uninstall_run() {
             info "保留 $path"
         fi
     done
-    if id "$HUSER" >/dev/null 2>&1 && confirm "删除系统用户 ${HUSER}?" no; then
+    if [[ "$HV_MODE" == "system" ]] && id "$HUSER" >/dev/null 2>&1 && confirm "删除系统用户 ${HUSER}?" no; then
         userdel "$HUSER" 2>/dev/null || warn "userdel 失败(可能有进程占用)"
         ok "已删除用户 $HUSER"
     fi
@@ -79,6 +82,6 @@ uninstall_run() {
     rule
     ok "卸载流程结束"
     dim "保留:$BACKUP_DIR(备份)、防火墙规则、swap、系统依赖"
-    dim "如需彻底清理,可再手工检查 /etc/systemd/system 下是否残留 hermes-vps 相关单元"
+    dim "如需彻底清理,可再手工检查 $(unit_dir) 下是否残留 hermes-vps 相关单元"
     pause
 }

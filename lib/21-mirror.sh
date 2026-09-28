@@ -77,11 +77,22 @@ mirror_apply_user() {
             chown "$HUSER:$HUSER" "$toml" 2>/dev/null || true; chmod 644 "$toml"
         fi
     fi
-    { printf '# hermes-vps 网络加速(自动生成)\n'
-      [[ -n "${UV_DEFAULT_INDEX:-}" ]] && printf 'export UV_DEFAULT_INDEX="%s"\n' "$UV_DEFAULT_INDEX"
-      [[ -n "${UV_INDEX_URL:-}" ]] && printf 'export UV_INDEX_URL="%s"\n' "$UV_INDEX_URL"
-      [[ -n "${UV_PYTHON_INSTALL_MIRROR:-}" ]] && printf 'export UV_PYTHON_INSTALL_MIRROR="%s"\n' "$UV_PYTHON_INSTALL_MIRROR"; } >/etc/profile.d/hermes-vps-mirror.sh
-    chmod 644 /etc/profile.d/hermes-vps-mirror.sh
+    # 系统级环境变量文件:只有 root 能写。用户态跳过(原来会在这里 Permission denied 并把
+    # 整个部署打断 —— 真机 [2/8] 就栽在这)。写失败也只提示,绝不让部署失败。
+    if [[ "$HV_MODE" == "system" ]]; then
+        if { printf '# hermes-vps 网络加速(自动生成)\n'
+             [[ -n "${UV_DEFAULT_INDEX:-}" ]] && printf 'export UV_DEFAULT_INDEX="%s"\n' "$UV_DEFAULT_INDEX"
+             [[ -n "${UV_INDEX_URL:-}" ]] && printf 'export UV_INDEX_URL="%s"\n' "$UV_INDEX_URL"
+             [[ -n "${UV_PYTHON_INSTALL_MIRROR:-}" ]] && printf 'export UV_PYTHON_INSTALL_MIRROR="%s"\n' "$UV_PYTHON_INSTALL_MIRROR"; } 2>/dev/null >/etc/profile.d/hermes-vps-mirror.sh; then
+            chmod 644 /etc/profile.d/hermes-vps-mirror.sh 2>/dev/null || true
+            info "已写入全局加速环境变量:/etc/profile.d/hermes-vps-mirror.sh"
+        else
+            warn "写入 /etc/profile.d 失败(已跳过,不影响本工具与 uv 的加速)"
+        fi
+    else
+        dim "用户态:跳过 /etc/profile.d(仅系统级);加速已对本工具与 uv 生效"
+    fi
+    return 0
 }
 
 mirror_show() {
