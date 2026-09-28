@@ -26,12 +26,25 @@ hv_service_gateway_install() {
     hv_has_systemd || { hv_warn "无 systemd,跳过网关服务安装"; return 1; }
 
     hv_step "安装网关服务(hermes gateway install --system)"
-    local rc=0
+    local rc=0 u=""
+
+    # 方案 A:直接以服务用户身份安装(单元里的 User= 一定正确)
     set +e
     hv_run_as_user_env "$HV_USER" "HERMES_HOME=$HV_UHOME" -- "$HV_HERMES_BIN" gateway install --system
     rc=$?
     set -e
 
+    # 方案 B:方案 A 失败(服务用户没有 sudo 权限),改由 root 执行,再校验/修正 User=
+    if [[ $rc -ne 0 ]]; then
+        hv_warn "以 $HV_USER 身份安装失败(rc=$rc),改由 root 安装后修正运行用户"
+        set +e
+        SUDO_USER="$HV_USER" hv_run_as_user_env "root" \
+            "HERMES_HOME=$HV_UHOME" "SUDO_USER=$HV_USER" -- "$HV_HERMES_BIN" gateway install --system
+        rc=$?
+        set -e
+    fi
+
+    # 方案 C:仍然失败 → 用户级服务 + linger
     if [[ $rc -ne 0 ]]; then
         hv_warn "系统级安装失败(rc=$rc),回退到用户级服务 + linger"
         hv_service_gateway_install_user

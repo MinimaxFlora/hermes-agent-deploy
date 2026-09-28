@@ -166,14 +166,13 @@ hv_caddy_render() {
     if [[ "$with_api" == "1" ]]; then
         api_block="	# OpenAI 兼容 API(给 OpenWebUI / LobeChat / 脚本用)
 	handle /v1/* {
-		reverse_proxy 127.0.0.1:@API_PORT@ {
-			header_up X-Forwarded-Proto {scheme}
-		}
+		import hermes_common
+		reverse_proxy 127.0.0.1:@API_PORT@
 	}
 "
         api_block="${api_block//@API_PORT@/$HV_API_PORT}"
     else
-        api_block="	# (API 未启用:hermes-vps web api on 可随时开启,并重新应用域名)"
+        api_block="	# (API 未启用:执行 'hermes-vps web api on' 后重新应用域名即可开启 /v1 反代)"
     fi
     # 用 awk 做多行替换,避免 sed 对多行内容的别扭处理
     awk -v repl="$api_block" '{ if ($0 ~ /@API_BLOCK@/) print repl; else print }' "$out" >"${out}.2"
@@ -187,7 +186,6 @@ hv_caddy_render() {
         mv "${out}.3" "$out"
     fi
 
-    hv_state_set CADDYFILE_RENDERED "$out"   # 临时路径,调用方负责 mv
     printf '%s' "$out"
 }
 
@@ -229,6 +227,15 @@ hv_caddy_apply() {
     local with_api=0
     [[ "$(hv_state_get API_SERVER "off")" == "on" ]] && with_api=1
     hv_caddy_write_config "$domain" "$email" "$with_api" "$acme_ca" || return 1
+
+    # 域名确定后,把 API 的 CORS 来源收敛到"本机面板 + 该域名",浏览器类客户端才不会被拦
+    if [[ "$with_api" == "1" ]]; then
+        # shellcheck source=/dev/null
+        source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/account.sh"
+        hv_env_set API_SERVER_CORS_ORIGINS "http://127.0.0.1:${HV_DASH_PORT},https://${domain}"
+        hv_info "API CORS 来源已更新为 127.0.0.1:${HV_DASH_PORT} 与 https://${domain}"
+    fi
+
     hv_caddy_reload
 }
 

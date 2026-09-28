@@ -63,6 +63,7 @@ hv_doctor() {
     hv_creds_get DASHBOARD_PASSWORD >/dev/null 2>&1 || true
     # shellcheck source=/dev/null
     source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/webui.sh" 2>/dev/null || true
+    declare -f hv_dashboard_check_gate >/dev/null && hv_dashboard_check_gate || true
     declare -f hv_dashboard_show_access >/dev/null && hv_dashboard_show_access || true
     declare -f hv_apiserver_show_access >/dev/null && [[ "$(hv_state_get API_SERVER off)" == "on" ]] && hv_apiserver_show_access || true
 

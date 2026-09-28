@@ -58,6 +58,48 @@ hv_dashboard_configure() {
     else
         hv_info "未设置域名:面板仅本机可用;配好域名后执行 hermes-vps domain set <域名>"
     fi
+
+    # 关键:public_url / 认证环境变量是启动时读取的。改了配置必须重启面板,
+    # 否则会出现"配置里声明了公网 URL,但正在跑的进程还没开认证门"的危险窗口。
+    hv_dashboard_restart_if_installed
+}
+
+hv_dashboard_restart_if_installed() {
+    hv_has_systemd || return 0
+    systemctl is-enabled hermes-dashboard.service >/dev/null 2>&1 || return 0
+    systemctl restart hermes-dashboard.service >/dev/null 2>&1 || {
+        hv_warn "面板服务重启失败,请手工检查:systemctl status hermes-dashboard"
+        return 0
+    }
+    hv_info "已重启面板服务使新配置生效"
+    sleep 2
+    hv_dashboard_check_gate
+}
+
+# 校验运行中的面板确实开了认证门(防止"配了但没生效")
+hv_dashboard_check_gate() {
+    hv_have curl || return 0
+    hv_port_in_use "$HV_DASH_PORT" || { hv_warn "面板端口 ${HV_DASH_PORT} 未监听"; return 0; }
+    local body; body="$(curl -sS -m 5 "http://127.0.0.1:${HV_DASH_PORT}/api/status" 2>/dev/null | tr -d ' \n')"
+    if [[ -z "$body" ]]; then
+        hv_warn "无法读取 /api/status,跳过认证门校验"
+        return 0
+    fi
+    if [[ "$body" == *'"auth_required":true'* ]]; then
+        hv_ok "面板认证门已开启(auth_required=true)"
+        if [[ "$body" == *'"basic"'* ]]; then
+            hv_ok "认证方式:用户名/密码(basic)"
+        else
+            hv_warn "已开认证门但未列出 basic provider,请检查 HERMES_DASHBOARD_BASIC_AUTH_* 是否写入 .env"
+        fi
+    else
+        if [[ -n "$(hv_state_get DASHBOARD_PUBLIC_URL "")" ]]; then
+            hv_err "面板声明了公网 URL 但认证门未开启 —— 不要把这种状态暴露到公网!"
+            hv_dim "   排查:cat $(hv_user_env_file) | grep HERMES_DASHBOARD; systemctl restart hermes-dashboard"
+        else
+            hv_dim "   面板当前为本机模式(auth_required=false),配置域名后会自动开启认证门"
+        fi
+    fi
 }
 
 # 面板访问信息(终端展示 + 供 doctor 复用)

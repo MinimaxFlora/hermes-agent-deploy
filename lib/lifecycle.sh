@@ -111,6 +111,7 @@ hv_uninstall() {
     targets+=("__path__/etc/systemd/system/hermes-vps-backup.timer")
     targets+=("__caddy__")                                    # 撤销 Caddy 站点(仅当由本工具生成)
     targets+=("__path__${HV_UHOME}")                          # 数据(config/记忆/技能/会话)
+    targets+=("__path__${HV_USER_HOME}")                      # 服务用户家目录(含 .local/.config)
     targets+=("__path__${HV_ETC}")                            # 本工具状态与凭据
     targets+=("__path__/var/log/hermes-vps")
     targets+=("__path__/usr/local/bin/hermes-vps")

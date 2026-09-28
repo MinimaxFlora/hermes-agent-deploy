@@ -32,10 +32,11 @@ HV_PYPI_CANDIDATES=(
 
 _hv_http_probe() {
     # 返回 "<http_code> <time_total>";失败返回 "000 99"
+    # 用 Range 只取前 64KB,避免为了测速把整个索引页拉下来
     local url="$1" timeout="${2:-8}"
     local out
     out="$(curl -sSL -o /dev/null -m "$timeout" -w '%{http_code} %{time_total}' \
-              --max-filesize 200000 -r 0-50000 "$url" 2>/dev/null)" || out="000 99"
+              -r 0-65536 "$url" 2>/dev/null)" || out="000 99"
     [[ -z "$out" ]] && out="000 99"
     printf '%s' "$out"
 }

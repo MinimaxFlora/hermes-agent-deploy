@@ -166,6 +166,7 @@ hv_deploy() {
 hv_deploy_final_report() {
     hv_step "部署完成 · 使用信息"
     local domain; domain="$(hv_state_get DOMAIN "")"
+    hv_dashboard_check_gate || true
 
     hv_rule
     if [[ -n "$domain" ]]; then

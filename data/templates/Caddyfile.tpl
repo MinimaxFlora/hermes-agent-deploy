@@ -8,7 +8,7 @@
 	admin 127.0.0.1:2019
 }
 
-# 公共响应头与压缩
+# 公共响应头与压缩(在每个 handle 里 import,保证只作用于该路由)
 (hermes_common) {
 	encode zstd gzip
 	header {
@@ -23,19 +23,29 @@
 # ============================================================
 # Hermes Agent 对外入口 —— 由 hermes-vps 生成,勿手工大改
 # 生成时间: @GENERATED_AT@
+#
+# 路由结构(handle 组互斥,路径 matcher 优先于兜底 handle):
+#   /healthz /health → 直接回 ok(探活,不经过 Hermes)
+#   /v1/*            → 127.0.0.1:@API_PORT@  (OpenAI 兼容 API,可关闭)
+#   其它             → 127.0.0.1:@DASH_PORT@ (Web 管理面板)
 # ============================================================
 @DOMAIN@ {
-	import hermes_common
-
-	# 健康检查(不经过 Hermes,用于探活/监控)
-	@health path /healthz /health
-	respond @health "ok" 200
+	# 健康检查(用于监控/探活)
+	handle /healthz {
+		respond "ok" 200
+	}
+	handle /health {
+		respond "ok" 200
+	}
 
 @API_BLOCK@
-	# 其余全部交给 Web 管理面板(127.0.0.1:@DASH_PORT@)
-	# dashboard.public_url=https://@DOMAIN@,绑定回环,Caddy 从回环反代 —— 官方推荐姿势
-	# WebSocket / SSE 流式输出 Caddy 默认即支持,无需额外 transport 配置
-	reverse_proxy 127.0.0.1:@DASH_PORT@
+	# 其余全部交给 Web 管理面板
+	# dashboard.public_url=https://@DOMAIN@ 且面板绑回环,Caddy 从回环反代 ——
+	# 回环代理被 Hermes 自动信任,无需放宽 trusted_proxies。
+	handle {
+		import hermes_common
+		reverse_proxy 127.0.0.1:@DASH_PORT@
+	}
 
 	log {
 		output file @LOG_DIR@/@DOMAIN@.access.log {

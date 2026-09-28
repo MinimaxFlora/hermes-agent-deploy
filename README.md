@@ -328,4 +328,33 @@ uv/PyPI 索引,后续 `hermes update` 也走加速。
 
 ---
 
-MIT License。
+## 验证状态(诚实说明)
+
+| 内容 | 状态 |
+|---|---|
+| 全部脚本语法、数据表格式、模块加载、危险 `rm` 扫描 | 已在本机跑通(`bash tests/lint.sh`) |
+| 键值/状态读写、提供商与平台表解析、Caddyfile 渲染、CLI 子命令 | 已有冒烟测试并通过(`bash tests/smoke.sh`) |
+| 生成的 Caddyfile 能否被 Caddy 接受 | 需用真实 `caddy validate` 验证(见下) |
+| 完整一键部署(装 Hermes、起服务、签证书、连机器人) | **需要在真实 VPS 上跑一遍才能算完成** |
+
+本工具的目标平台是 Linux VPS(Debian/Ubuntu),开发机上无法完整验证的部分包括:
+`useradd`、systemd 单元、apt 安装、Let's Encrypt 签发、消息平台连通性。
+建议在目标 VPS 上按下面的顺序做一次真机验收:
+
+```bash
+# 1) 静态自检(不装任何东西)
+bash tests/lint.sh && bash tests/smoke.sh
+
+# 2) 无人值守部署(会真的装)
+sudo hermes-vps install --config /etc/hermes-vps/hermes-vps.conf --non-interactive --yes
+
+# 3) 验收清单
+hermes-vps doctor                 # 版本/服务/端口/HTTPS 探活全绿
+curl -s https://域名/api/status  # 应返回 302/401(认证门生效),而不是 200 直开
+hermes-vps logs gateway           # 平台连接日志
+hermes-vps backup create          # 备份可用
+```
+
+---
+
+MIT License —— 见 [LICENSE](LICENSE)。
