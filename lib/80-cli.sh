@@ -63,6 +63,9 @@ main() {
     detect_os
     state_init
     load_mirror_env
+    # 生效端口:用户态撞端口时 ensure_free_ports 会把新端口记进 state,这里读回来
+    DASH_PORT="$(st_get DASH_PORT "$DASH_PORT")"
+    API_PORT="$(st_get API_PORT "$API_PORT")"
 
     local cmd="${args[0]:-}"
     if [[ -z "$cmd" ]]; then

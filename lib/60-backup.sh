@@ -18,7 +18,7 @@ backup_excludes=(
 )
 
 backup_create() {
-    require_root
+    if [[ "$HV_MODE" == "system" ]]; then require_root "创建备份"; fi
     local tag="${1:-manual}"
     local ts; ts="$(date +%Y%m%d-%H%M%S)"
     local out="$BACKUP_DIR/hermes-${tag}-${ts}.tar.gz"
@@ -97,7 +97,7 @@ backup_list() {
 }
 
 backup_restore() {
-    require_root
+    if [[ "$HV_MODE" == "system" ]]; then require_root "恢复备份"; fi
     clear_screen
     header "恢复备份"
     local files=() f

@@ -40,7 +40,8 @@ hermes_version() {
 }
 
 hermes_install() {
-    require_root
+    # 官方安装脚本是纯用户空间的:用户态直接装到自己的家目录,不需要 root
+    if [[ "$HV_MODE" == "system" ]]; then require_root "安装 Hermes(系统级)"; fi
     if hermes_installed; then
         ok "Hermes 已安装($(hermes_version 2>/dev/null || echo 版本未知))"
         if [[ -d "$UHOME/hermes-agent/hermes_cli/web_dist" && "${FORCE:-0}" != "1" ]]; then

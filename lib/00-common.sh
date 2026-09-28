@@ -132,11 +132,34 @@ mode_label() { if [[ "$HV_MODE" == "system" ]]; then printf '系统级(root)'; e
 # 单元目录与 systemctl:系统级用系统实例,用户态用 systemd --user(单元在 ~/.config/systemd/user)
 unit_dir() { if [[ "$HV_MODE" == "system" ]]; then printf '/etc/systemd/system'; else printf '%s/.config/systemd/user' "$USER_HOME"; fi; }
 sctl() { if [[ "$HV_MODE" == "system" ]]; then systemctl "$@"; else systemctl --user "$@"; fi; }
+# 本机端口是否已被占用(纯 bash,不依赖 ss/netstat)
+port_in_use() { (exec 3<>"/dev/tcp/127.0.0.1/$1") >/dev/null 2>&1; }
+# 用户态:默认端口被别的实例占了就自动换空闲端口,并记进 state(所有引用都用 $DASH_PORT/$API_PORT)
+ensure_free_ports() {
+    [[ "$HV_MODE" == "system" ]] && return 0
+    local p
+    if port_in_use "$DASH_PORT"; then
+        p="$DASH_PORT"
+        while [[ $p -lt $((DASH_PORT + 1000)) ]]; do p=$((p + 1)); port_in_use "$p" || break; done
+        warn "面板端口 $DASH_PORT 已被占用(本机可能还有另一个实例)→ 用户态改用 $p"
+        DASH_PORT="$p"; st_set DASH_PORT "$p"
+    fi
+    if port_in_use "$API_PORT"; then
+        p="$API_PORT"
+        while [[ $p -lt $((API_PORT + 1000)) ]]; do p=$((p + 1)); port_in_use "$p" || break; done
+        warn "API 端口 $API_PORT 已被占用 → 用户态改用 $p"
+        API_PORT="$p"; st_set API_PORT "$p"
+    fi
+    return 0
+}
 
 # 需要特权时:root 直接过;普通用户有 sudo 就提示并原样提权重跑
 require_root() {
     is_root && return 0
     warn "该操作需要系统级权限(root):$(printf '%s ' "$@")"
+    if [[ "$NONINTERACTIVE" == "1" || "$ASSUME_YES" == "1" || ! -t 0 ]]; then
+        die "非交互模式不会自动提权(避免无 TTY 的 sudo 失败)。请用:sudo bash $SELF ${*:-}"
+    fi
     if have_sudo; then
         if confirm "用 sudo 以 root 身份重新执行同一命令?" yes; then
             info "正在提权:sudo bash $SELF ${HV_ARGV[*]:-}"
@@ -150,6 +173,10 @@ require_root() {
 # 菜单里的特权入口:root 直接过;普通用户有 sudo 就征询后原样提权重跑;否则提示并返回 1(不退出脚本)
 escalate_or_skip() { # escalate_or_skip <能力说明>
     is_root && return 0
+    if [[ "$NONINTERACTIVE" == "1" || "$ASSUME_YES" == "1" || ! -t 0 ]]; then
+        warn "「$1」需要 root;非交互模式不自动提权,已跳过(需要时用 sudo 重新执行本命令)"
+        return 1
+    fi
     if have_sudo; then
         if confirm "「$1」需要系统级权限(root),用 sudo 重新执行整条命令?" yes; then
             info "正在提权:sudo bash $SELF ${HV_ARGV[*]:-}"

@@ -94,19 +94,37 @@ dashboard_show_info() {
 }
 
 dashboard_verify_gate() { # 认证门是否生效
-    local code; code="$(curl -sS -m 8 -o /dev/null -w '%{http_code}' "http://127.0.0.1:${DASH_PORT}/" 2>/dev/null || echo 000)"
+    # 用 /api/config 判断:无凭据时应为 401/403。
+    # 注意:不能只看 `/` —— 它的 200 可能只是登录页被内联返回(真机踩过:
+    # 用户态实例 `/` 返 200 但 /api/config 是 401,误判成"门没生效")。
+    local code c2
+    code="$(curl -sS -m 8 -o /dev/null -w '%{http_code}' "http://127.0.0.1:${DASH_PORT}/api/config" 2>/dev/null || echo 000)"
     case "$code" in
+        401|403) printf 'ok'; return 0 ;;
+        200)     printf 'open'; return 0 ;;
+        000)     printf 'down'; return 0 ;;
+    esac
+    c2="$(curl -sS -m 8 -o /dev/null -w '%{http_code}' "http://127.0.0.1:${DASH_PORT}/" 2>/dev/null || echo 000)"
+    case "$c2" in
         302|303|401|403) printf 'ok' ;;
         200) printf 'open' ;;
         000) printf 'down' ;;
-        *) printf 'other:%s' "$code" ;;
+        *) printf 'other:%s' "$c2" ;;
     esac
 }
 dashboard_wait_ready() { # 等待面板监听
     local i=0
+    # 后台进程模式(用户态、无 systemd --user):端口有响应不代表是我们的实例
+    # (本机可能还有另一个实例占着同一个端口)→ 先确认自己的进程活着
+    if [[ "$HV_MODE" != "system" ]] && ! user_systemd_ok; then
+        local pf; pf="$(pidfile_for hermes-dashboard)"
+        if [[ ! -f "$pf" ]] || ! kill -0 "$(cat "$pf" 2>/dev/null)" 2>/dev/null; then
+            return 1
+        fi
+    fi
     while [[ $i -lt 60 ]]; do
         port_listening "$DASH_PORT" && return 0
-        sleep 1; i=$((i+1))
+        sleep 1; i=$((i + 1))
     done
     return 1
 }

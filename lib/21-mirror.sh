@@ -10,7 +10,9 @@ _probe() { # 返回 "<code> <time>"
     [[ -z "$out" ]] && out="000 99"
     printf '%s' "$out"
 }
-_probe_ok() { [[ "${1%% *}" =~ ^(200|206|301|302|403|416)$ ]]; }
+# 注意:403/429 是"被挡",绝不能算可用 —— 真机踩过:探活 403 的通道被选中当加速,
+# 结果 git 克隆 403 失败,官方安装脚本直接挂掉。只有 2xx(及不支持 Range 的 416)算可用。
+_probe_ok() { [[ "${1%% *}" =~ ^(200|206|416)$ ]]; }
 
 mirror_probe() {
     local force="${1:-0}"
@@ -19,14 +21,19 @@ mirror_probe() {
         return 0
     fi
     local probe="https://raw.githubusercontent.com/NousResearch/hermes-agent/main/README.md"
-    local p url res t best="" bestt=99
+    local p url res t best="" bestt=99 direct_ok=0
     step "探测 GitHub 通道"
     for p in "${GH_PREFIX_CANDIDATES[@]}"; do
         if [[ -z "$p" ]]; then url="$probe"; else url="${p}${probe}"; fi
         res="$(_probe "$url" 8)"; t="${res##* }"
-        if _probe_ok "$res" && awk -v a="$t" -v b="$bestt" 'BEGIN{exit !(a<b)}'; then best="$p"; bestt="$t"; fi
+        if _probe_ok "$res"; then
+            [[ -z "$p" ]] && direct_ok=1
+            if awk -v a="$t" -v b="$bestt" 'BEGIN{exit !(a<b)}'; then best="$p"; bestt="$t"; fi
+        fi
         dim "$([[ -z $p ]] && echo 直连 || echo "$p") → HTTP ${res%% *} / ${t}s"
     done
+    # 直连能用就不折腾代理前缀:代理对 git 克隆经常不友好(403/改写失效,真机踩过)
+    if [[ $direct_ok -eq 1 ]]; then best=""; fi
     if [[ -z "$best" && "$bestt" == "99" ]]; then warn "所有 GitHub 通道均不可用,安装可能失败"; return 1; fi
     ok "GitHub 通道:$([[ -z $best ]] && echo 直连 || echo "$best")(${bestt}s)"
     GH_PREFIX="$best"
@@ -60,10 +67,24 @@ mirror_apply_user() {
     [[ -f "$MIRROR_FILE" ]] || return 0
     # shellcheck disable=SC1090
     . "$MIRROR_FILE"
-    if [[ -n "${HV_MIRROR_GH_PREFIX:-}" ]] && id "$HUSER" >/dev/null 2>&1; then
-        run_as_user "$HUSER" git config --global \
-            "url.${HV_MIRROR_GH_PREFIX}https://github.com/.insteadOf" "https://github.com/" >/dev/null 2>&1 \
-            && info "已为 $HUSER 配置 git GitHub 加速"
+    if id "$HUSER" >/dev/null 2>&1; then
+        # 先清掉以前可能写入的各家前缀(避免留下失效改写)
+        local c
+        for c in "${GH_PREFIX_CANDIDATES[@]}"; do
+            [[ -z "$c" ]] && continue
+            run_as_user "$HUSER" git config --global --unset-all "url.${c}https://github.com/.insteadOf" >/dev/null 2>&1 || true
+        done
+        if [[ -n "${HV_MIRROR_GH_PREFIX:-}" ]]; then
+            # 探活通过 ≠ 能克隆:必须实测(真机踩过探活返回 403 的通道让 git clone 全挂)
+            if run_as_user "$HUSER" timeout 45 git ls-remote --exit-code \
+                   "${HV_MIRROR_GH_PREFIX}https://github.com/NousResearch/hermes-agent.git" HEAD >/dev/null 2>&1; then
+                run_as_user "$HUSER" git config --global \
+                    "url.${HV_MIRROR_GH_PREFIX}https://github.com/.insteadOf" "https://github.com/" >/dev/null 2>&1 \
+                    && info "已为 $HUSER 配置 git GitHub 加速(已实测可克隆)"
+            else
+                warn "通道 ${HV_MIRROR_GH_PREFIX} 无法用于 git 克隆,已跳过 git 改写(直连不受影响)"
+            fi
+        fi
     fi
     if [[ -n "${HV_MIRROR_PYPI_INDEX:-}" ]] && id "$HUSER" >/dev/null 2>&1; then
         local udir="$HHOME/.config/uv"

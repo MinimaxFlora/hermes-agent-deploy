@@ -60,6 +60,7 @@ deploy_all() {
     progress "安装 Hermes Agent"
     hermes_install
 
+    ensure_free_ports        # 用户态端口冲突时在这里定下新端口(后面几处都引用 $DASH_PORT)
     progress "配置面板认证门"
     dashboard_ensure_auth
     [[ -n "$domain" ]] && dashboard_webui "$domain" || dashboard_webui ""

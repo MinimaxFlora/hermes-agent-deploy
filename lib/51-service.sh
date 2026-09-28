@@ -187,7 +187,7 @@ svc_ctl() { # svc_ctl start|stop|restart|reload <svc>
 usermode_bg_cmd() {
     case "$1" in
         hermes-gateway)   printf '%s gateway run' "$HBIN" ;;
-        hermes-dashboard) printf '%s dashboard' "$HBIN" ;;
+        hermes-dashboard) printf '%s dashboard --port %s' "$HBIN" "$DASH_PORT" ;;
         caddy)            printf '%s run --config %s --adapter caddyfile' "$(caddy_bin)" "$CADDYFILE" ;;
         *) return 1 ;;
     esac
@@ -218,12 +218,25 @@ usermode_bg_stop() {
 # 用户态服务安装(systemd --user 可用时装单元,否则提示将由后台进程托管)
 user_service_install() { # user_service_install <unit> gateway|dashboard
     local name="$1" kind="$2" exec_start dir
-    if ! user_systemd_ok; then
-        warn "systemd --user 不可用(没有用户 DBus 会话):${name} 将以后台进程方式启动"
-        dim "在菜单「服务管理」里启动/停止/看日志即可,日志:$TOOL_LOG_DIR/${name}.log"
+    # 本机已经有系统级 Hermes 网关在跑时,官方会拒绝再起一个(并警告共享 DB 会被并发写坏)。
+    # 这时用户态实例只提供面板与 CLI —— 明确告知,绝不假装成功。
+    if [[ "$kind" == "gateway" ]] && have systemctl && systemctl is-active hermes-gateway >/dev/null 2>&1; then
+        warn "本机已有系统级网关在运行(systemd hermes-gateway):用户态不再起第二个网关"
+        dim "官方会拒绝重复网关(并发写共享 kanban DB 有损坏风险)。"
+        dim "要用用户态网关请先停掉系统级实例:sudo systemctl disable --now hermes-gateway"
         return 0
     fi
-    if [[ "$kind" == "gateway" ]]; then exec_start="$HBIN gateway run"; else exec_start="$HBIN dashboard"; fi
+    ensure_free_ports
+    if ! user_systemd_ok; then
+        warn "systemd --user 不可用(没有用户 DBus 会话):${name} 改为后台进程方式"
+        if usermode_bg_start "$name"; then
+            ok "已以后台进程启动:$name(日志 $TOOL_LOG_DIR/${name}.log,状态见菜单 6)"
+        else
+            warn "后台启动失败,可稍后在菜单「服务管理」里重试(日志 $TOOL_LOG_DIR/${name}.log)"
+        fi
+        return 0
+    fi
+    if [[ "$kind" == "gateway" ]]; then exec_start="$HBIN gateway run"; else exec_start="$HBIN dashboard --port $DASH_PORT"; fi
     dir="$USER_HOME/.config/systemd/user"
     mkdir -p "$dir"
     cat >"$dir/$name.service" <<EOF
