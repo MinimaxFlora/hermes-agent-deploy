@@ -149,11 +149,16 @@ confirm() { # confirm <提示> [yes|no]
     [[ -z "$a" ]] && { [[ "$def" == "yes" ]]; return $?; }
     [[ "$a" =~ ^[Yy] ]]
 }
-menu_choice() { # echo 用户输入
+menu_choice() { # echo 用户输入;HV_EOF=1 表示输入流已结束(EOF)
     local __v="$1" prompt="${2:-请输入编号}"
     local a=""
-    if interactive; then printf '  %s%s%s: ' "$BD" "$prompt" "$N"; read -r a || true; fi
+    HV_EOF=0
+    if interactive; then
+        printf '  %s%s%s: ' "$BD" "$prompt" "$N"
+        read -r a || { HV_EOF=1; a=""; }
+    fi
     printf -v "$__v" '%s' "$a"
+    return 0
 }
 
 # ---------------------------------------------------------------------------
@@ -791,12 +796,13 @@ model_chat_test() {
     dim "这会通过 Hermes 发一句“只回答:OK”,验证 模型 → 工具链 → 回复 全链路"
     local out rc=0
     set +e
-    out="$(run_as_user_env "$HUSER" "HERMES_HOME=$UHOME" -- "$HBIN" -z "只回答两个字:可用" --max-turns 1 2>&1)"
+    out="$(run_as_user_env "$HUSER" "HERMES_HOME=$UHOME" -- timeout 150 "$HBIN" chat -q "只回答两个字:可用" -Q --max-turns 1 2>&1)"
     rc=$?
     set -e
     printf '\n'
     if [[ $rc -eq 0 && -n "$out" ]]; then
         ok "对话成功,模型回复:$(printf '%s' "$out" | tr -d '\n' | head -c 200)"
+        st_set MODEL_VERIFIED "$(date '+%F %T')"
     else
         err "对话失败(退出码 $rc):"
         printf '%s\n' "$out" | tail -n 8 | sed 's/^/      /'
@@ -847,8 +853,15 @@ plat_enabled() { [[ "$(hcfg_get "platforms.$1.enabled")" == *true* ]]; }
 # 网关日志里的平台连接状态
 plat_live_state() {
     local id="$1" log last
+    # api_server 直接看端口,别猜日志
+    if [[ "$id" == "api_server" ]]; then
+        if port_listening "$API_PORT"; then printf 'connected'; else printf 'failed'; fi
+        return 0
+    fi
     have journalctl || { printf 'unknown'; return 0; }
-    log="$(journalctl -u hermes-gateway --since '-2 hours' --no-pager 2>/dev/null | grep -iE "(^|[^a-z])${id}([^a-z]|$)" | tail -n 8)" || log=""
+    log="$(journalctl -u hermes-gateway --since '-2 hours' --no-pager 2>/dev/null \
+            | grep -iE "(^|[^a-z])${id}([^a-z]|$)" \
+            | grep -viE "rejected invalid api key|peer_ip=" | tail -n 8)" || log=""
     [[ -z "$log" ]] && { printf 'unknown'; return 0; }
     last="$(printf '%s\n' "$log" | tail -n 1)"
     if printf '%s' "$last" | grep -qiE "startup failed|failed to (start|connect|login)|connection failed|invalid|rejected|unauthorized|error"; then
@@ -1632,16 +1645,18 @@ domain_configure() {
 # =============================================================================
 
 backup_excludes=(
+    # 只备份"数据与配置":代码树与 Python 运行时属可重装内容,不打包(恢复时保持原样)
+    "--exclude=.hermes/tools"
+    "--exclude=.hermes/hermes-agent"
     "--exclude=.hermes/sessions/*"
     "--exclude=.hermes/logs/*"
     "--exclude=.hermes/*.venv"
     "--exclude=.hermes/venv"
     "--exclude=.hermes/uv-cache"
-    "--exclude=.hermes/hermes-agent/node_modules"
-    "--exclude=.hermes/hermes-agent/.git"
-    "--exclude=.hermes/hermes-agent/hermes_cli/web_dist"
     "--exclude=.hermes/state.db-wal"
     "--exclude=.hermes/state.db-shm"
+    "--exclude=.hermes/unpacked.bak"
+    "--exclude=.hermes/*.pre-restore-*"
 )
 
 backup_create() {
@@ -2220,7 +2235,7 @@ main_menu() {
             12) show_help ;;
             13) uninstall_run ;;
             0|q|exit|quit) printf '\n  %s再见 👋%s\n\n' "$C" "$N"; return 0 ;;
-            "") : ;;
+            "") if [[ "${HV_EOF:-0}" == "1" || ! -t 0 ]]; then printf '\n  %s输入已结束,退出。%s\n\n' "$C" "$N"; return 0; fi ;;
             *) warn "无效编号:$ch"; sleep 1 ;;
         esac
     done
