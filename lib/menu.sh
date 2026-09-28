@@ -24,6 +24,13 @@ source "${_HV_LIB}/firewall.sh"
 
 hv_menu_main() {
     hv_ui_init
+    # 没有 TTY 时不能"猜"用户意图(否则会用默认项直接跑部署)
+    if [[ "$(_hv_ui_kind_cached)" == "none" ]]; then
+        hv_err "菜单需要交互式终端。当前没有 TTY:"
+        hv_dim "   • 用 ssh -t root@主机 hermes-vps,或在服务器控制台/终端里运行"
+        hv_dim "   • 非交互场景请直接用子命令:hermes-vps help"
+        return 1
+    fi
     while :; do
         local choice=""
         hv_menu choice "Hermes Agent VPS" "Hermes 部署/配置/运维 —— 选一项:" \

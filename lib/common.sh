@@ -120,7 +120,7 @@ hv_install_trap() {
 hv_have() { command -v "$1" >/dev/null 2>&1; }
 
 hv_require_root() {
-    [[ "$(id -u)" -eq 0 ]] || hv_die "需要 root 权限运行(请用 sudo 或 root 登录): $0 $*"
+    [[ "$(id -u)" -eq 0 ]] || hv_die "需要 root 权限。请用 sudo 运行,例如: sudo ${HV_NAME}${*:+ $*}"
 }
 
 hv_require_cmd() {

@@ -35,6 +35,7 @@ _hv_usage() {
 hermes-vps —— Hermes Agent VPS 一键部署与管理
 
 用法:
+  hermes-vps                     直接打开全屏菜单(等价于 hermes-vps menu)
   hermes-vps <命令> [参数]
 
 部署
@@ -119,8 +120,16 @@ _hv_load_all() {
 }
 
 main() {
-    local cmd="${1:-help}"; shift || true
+    local cmd="${1:-}"; shift || true
 
+    # 无子命令时:有终端 → 直接进菜单;重定向/非交互 → 打印帮助(方便脚本与管道使用)
+    if [[ -z "$cmd" ]]; then
+        if [[ -t 0 && -t 1 ]]; then
+            cmd="menu"
+        else
+            _hv_usage; return 0
+        fi
+    fi
     # 通用开关在这里统一解析(对所有子命令生效),剩余参数交给子命令
     local -a _left=()
     while [[ $# -gt 0 ]]; do
