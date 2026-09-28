@@ -67,6 +67,12 @@ main() {
     set -- "${args[@]}"
     shift || true
 
+    # 强制 root:只有帮助 / 版本 / 自检可以在非 root 下跑(便于诊断,CI 也要用)
+    case "$cmd" in
+        help|-h|--help|version|-V|--version|selftest) : ;;
+        *) require_root "$cmd" ;;
+    esac
+
     case "$cmd" in
         help|-h|--help) usage ;;
         version|-V|--version) printf 'hermes-vps %s\n' "$V" ;;

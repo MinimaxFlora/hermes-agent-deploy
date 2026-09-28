@@ -129,6 +129,19 @@ caddy_validate() { # 校验给定内容
     local content="$1" bin tmp
     bin="$(caddy_bin)"
     tmp="$(mktemp /tmp/Caddyfile.XXXXXX)"
+    # caddy validate 不只是语法检查:它会 provision 日志写入器,真的去打开日志文件。
+    # 当日志目录此刻不可写(非 root 的诊断、CI 上跑 selftest)时,把校验用的日志目标
+    # 换成临时目录 —— 语法/路由/指令照样全量校验,只是不再因权限而误判配置无效。
+    local log_dir="$CADDY_LOG_DIR"
+    if [[ ! -w "$log_dir" ]]; then
+        if mkdir -p "$log_dir" 2>/dev/null && [[ -w "$log_dir" ]]; then
+            :   # 目录可建(比如 root),用真实路径校验
+        else
+            log_dir="$(mktemp -d /tmp/hv-caddylog.XXXXXX)"
+            content="$(printf '%s\n' "$content" | sed "s|$CADDY_LOG_DIR/|$log_dir/|g")"
+            dim "日志目录 $CADDY_LOG_DIR 当前不可写 → 校验改用临时日志目标:$log_dir"
+        fi
+    fi
     printf '%s\n' "$content" >"$tmp"
     local rc=0
     set +e
@@ -136,6 +149,7 @@ caddy_validate() { # 校验给定内容
     rc=$?
     set -e
     rm -f "$tmp"
+    if [[ "$log_dir" == /tmp/hv-caddylog.* ]]; then rm -rf "$log_dir"; fi
     if [[ $rc -ne 0 ]]; then
         err "Caddyfile 校验失败:"
         sed 's/^/      /' /tmp/.hv-caddy-validate.out | head -n 12 >&2

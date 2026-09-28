@@ -95,7 +95,25 @@ on_error() {
 trap 'on_error "$LINENO" "$BASH_COMMAND"' ERR
 
 have() { command -v "$1" >/dev/null 2>&1; }
-require_root() { [[ "$(id -u)" -eq 0 ]] || die "需要 root 权限。请用: sudo bash $SELF ${*:-}"; }
+require_root() { # 所有管理操作都强制以 root 运行(仅 --help / version / selftest 例外)
+    [[ "$(id -u)" -eq 0 ]] && return 0
+    local hint="${*:-}"
+    printf '
+  %s✘ 本工具必须以 root 运行%s
+' "$R" "$N" >&2
+    printf '    %s原因:需要创建服务用户、写 %s、安装 systemd 服务、配置防火墙与 80/443 端口%s
+' "$DM" "$ETC_DIR" "$N" >&2
+    if have sudo; then
+        printf '    %s请改用:sudo bash %s %s%s
+' "$BD" "$SELF" "$hint" "$N" >&2
+    else
+        printf '    %s系统里没有 sudo:请先用 root 登录(或 su -)再运行%s
+' "$BD" "$N" >&2
+    fi
+    printf '
+' >&2
+    exit 1
+}
 interactive() { [[ "$NONINTERACTIVE" == "1" ]] && return 1; [[ -t 0 && -t 1 ]]; }
 
 random_str() { # random_str [长度]  —— 注意:`|| true` 而非 `|| out=""`:管道可能因 head 提前退出而返回非零,

@@ -48,6 +48,15 @@
 
 ---
 
+> **必須以 root 執行** —— 本工具要建立服務使用者、寫 `/etc/hermes-vps`、安裝 systemd 服務、設定防火牆與 80/443,因此所有管理操作**強制 root**;只有 `--help` / `version` / `selftest` 允許一般使用者執行(便於診斷與 CI)。
+>
+> ```bash
+> sudo bash hermes-vps.sh       # 開啟互動選單(推薦)
+> sudo hermes-vps install       # 或直接執行某個指令
+> ```
+>
+> 以一般使用者執行會被明確攔下,並直接給出應該使用的 `sudo` 指令 —— 不會靜默失敗或只做一半。
+
 ## 🚀 60 秒開始
 
 ```bash

@@ -48,6 +48,15 @@ The UI is a **plain text menu** — type a number and you are done. No dialog bo
 
 ---
 
+> **Must run as root** — the tool creates a service user, writes `/etc/hermes-vps`, installs systemd services and configures the firewall plus ports 80/443, so every management action **requires root**. Only `--help` / `version` / `selftest` are allowed for regular users (for diagnostics and CI).
+>
+> ```bash
+> sudo bash hermes-vps.sh       # open the interactive menu (recommended)
+> sudo hermes-vps install       # or run a single command
+> ```
+>
+> Running it as a regular user is refused with the exact `sudo` command to use — never a silent half-finished run.
+
 ## 🚀 Quick start (60 seconds)
 
 ```bash
