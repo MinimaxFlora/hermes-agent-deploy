@@ -41,6 +41,31 @@ jobs:
       - name: 构建发布用单文件
         run: bash build.sh dist/hermes-vps.sh
 
+      - name: 安装器自检(管道形式 / 参数解析 / 下载校验)
+        run: |
+          set -euo pipefail
+          bash -n install.sh
+          # 历史上 usage() 用 sed "$0" 取注释:管道安装时 $0=bash → 直接报错退出
+          cat install.sh | bash -s -- --help | grep -q 'bash -s -- --check'
+          if cat install.sh | bash -s -- --nope >/dev/null 2>&1; then
+            echo "✘ 未知参数未被拒绝"; exit 1
+          fi
+          # 端到端:dry-run 会真的下载 Release 资产并校验 sha256
+          out=""; st=0
+          out="$(cat install.sh | bash -s -- --dry-run 2>&1)" || st=$?
+          printf '%s\n' "$out" | tail -4
+          if printf '%s' "$out" | grep -qE '下载到的文件为空|不是合法 bash 脚本|校验失败'; then
+            echo "✘ dry-run 在下载/校验环节失败"; exit 1
+          fi
+          if [[ $st -ne 0 ]]; then
+            if printf '%s' "$out" | grep -qE '无法获取最新版本|rate limit|速率|API rate'; then
+              echo "· CI 上拿不到 Release(限流),跳过 dry-run 断言"
+            else
+              echo "✘ dry-run 因非限流原因失败"; exit 1
+            fi
+          fi
+          echo "✔ 安装器自检通过"
+
       - name: 权限关卡(root-only)自检
         run: |
           set -euo pipefail

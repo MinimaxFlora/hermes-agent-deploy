@@ -51,8 +51,8 @@
 > **必须以 root 运行** —— 本工具要创建服务用户、写 `/etc/hermes-vps`、安装 systemd 服务、配置防火墙与 80/443,所以所有管理操作都**强制 root**;只有 `--help` / `version` / `selftest` 允许普通用户执行(便于诊断与 CI)。
 >
 > ```bash
-> sudo bash hermes-vps.sh       # 打开交互菜单(推荐)
-> sudo hermes-vps install       # 或直接跑某个命令
+> sudo hermes-vps                # 打开交互菜单(推荐)
+> sudo hermes-vps install        # 或直接跑某个命令
 > ```
 >
 > 以普通用户运行会被明确拦下,并直接给出该用的 `sudo` 命令 —— 不会静默失败或只做一半。
@@ -60,19 +60,29 @@
 ## 🚀 60 秒开始
 
 ```bash
-# 1) 登录你的服务器
+# 1) 登录服务器
 ssh root@<你的服务器>
 
-# 2) 安装(自动取最新 Release,校验 sha256 后装到 /usr/local/bin)
-curl -fsSL https://raw.githubusercontent.com/MinimaxFlora/hermes-agent-deploy/main/install.sh | bash
+# 2) 安装:从 Release 取最新版 → 校验 sha256 → 装到 /usr/local/bin
+curl -fsSL https://raw.githubusercontent.com/MinimaxFlora/hermes-agent-deploy/main/install.sh | sudo bash
 
-# 3) 打开菜单(首次部署选 1)
-hermes-vps
+# 3) 打开交互菜单(首次部署选 1)
+sudo hermes-vps
+```
 
-# 其它用法
-bash install.sh --check              # 只看已装版本 vs 最新版本
-bash install.sh --version v1.0.0     # 装指定版本
-bash install.sh --to ~/.local/bin    # 非 root 时装到自定义目录
+**普通用户**:工具本体必须以 root 运行,所以装到自己的 `~/.local/bin` 后,用 `sudo` 启动它:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/MinimaxFlora/hermes-agent-deploy/main/install.sh | bash                # 装到 ~/.local/bin(不需要 root)
+sudo ~/.local/bin/hermes-vps           # 以 root 启动菜单
+```
+
+安装器常用参数(管道形式要用 `bash -s --` 传参;已把 install.sh 存到本地时也可直接 `bash install.sh …`):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/MinimaxFlora/hermes-agent-deploy/main/install.sh | bash -s -- --check            # 只看已装版本 vs 最新版本
+curl -fsSL https://raw.githubusercontent.com/MinimaxFlora/hermes-agent-deploy/main/install.sh | bash -s -- --version v1.0.0   # 装指定版本
+curl -fsSL https://raw.githubusercontent.com/MinimaxFlora/hermes-agent-deploy/main/install.sh | bash -s -- --to ~/.local/bin  # 装到自定义目录(非 root)
 ```
 
 首次进入菜单选 `1` 一键部署 —— 填域名(可留空)、选模型提供商,剩下的它自己干完。

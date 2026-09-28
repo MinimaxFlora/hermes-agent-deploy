@@ -51,8 +51,8 @@ UI는 **일반 텍스트 메뉴**입니다. 번호만 입력하면 됩니다. �
 > **반드시 root 로 실행하세요** —— 전용 서비스 사용자 생성, `/etc/hermes-vps` 쓰기, systemd 서비스 설치, 방화벽과 80/443 설정을 수행하므로 모든 관리 작업에 **root 가 필요**합니다. 일반 사용자가 실행할 수 있는 것은 `--help` / `version` / `selftest` 뿐입니다(진단 및 CI 용).
 >
 > ```bash
-> sudo bash hermes-vps.sh       # 대화형 메뉴 열기(권장)
-> sudo hermes-vps install       # 또는 단일 명령 실행
+> sudo hermes-vps                # 대화형 메뉴 열기(권장)
+> sudo hermes-vps install        # 또는 단일 명령 실행
 > ```
 >
 > 일반 사용자로 실행하면 명확히 거부하고 사용해야 할 `sudo` 명령을 안내합니다(조용한 실패나 중간 종료 없음).
@@ -63,16 +63,26 @@ UI는 **일반 텍스트 메뉴**입니다. 번호만 입력하면 됩니다. �
 # 1) 서버 접속
 ssh root@<서버 주소>
 
-# 2) 설치(최신 Release를 받아 sha256 검증 후 /usr/local/bin에 설치)
-curl -fsSL https://raw.githubusercontent.com/MinimaxFlora/hermes-agent-deploy/main/install.sh | bash
+# 2) 설치: 최신 Release → sha256 검증 → /usr/local/bin
+curl -fsSL https://raw.githubusercontent.com/MinimaxFlora/hermes-agent-deploy/main/install.sh | sudo bash
 
-# 3) 메뉴 열기(첫 실행은 1 선택)
-hermes-vps
+# 3) 대화형 메뉴 열기(첫 실행은 1 선택)
+sudo hermes-vps
+```
 
-# 기타
-bash install.sh --check              # 설치본과 최신 버전 비교
-bash install.sh --version v1.0.0       # 특정 버전 설치
-bash install.sh --to ~/.local/bin    # 비 root라면 원하는 경로에
+**일반 사용자**: 도구 본체는 root 로 실행해야 하므로 자신의 `~/.local/bin` 에 설치한 뒤 `sudo` 로 실행합니다:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/MinimaxFlora/hermes-agent-deploy/main/install.sh | bash                # ~/.local/bin 에 설치(root 불필요)
+sudo ~/.local/bin/hermes-vps           # root 로 메뉴 실행
+```
+
+설치 스크립트 주요 옵션(파이프 형식에서는 `bash -s --` 로 인자를 전달합니다. install.sh 를 저장해 두었다면 `bash install.sh …` 도 가능):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/MinimaxFlora/hermes-agent-deploy/main/install.sh | bash -s -- --check            # 설치본과 최신 버전 비교
+curl -fsSL https://raw.githubusercontent.com/MinimaxFlora/hermes-agent-deploy/main/install.sh | bash -s -- --version v1.0.0   # 특정 버전 설치
+curl -fsSL https://raw.githubusercontent.com/MinimaxFlora/hermes-agent-deploy/main/install.sh | bash -s -- --to ~/.local/bin  # 다른 경로에 설치(비 root)
 ```
 
 처음에는 메뉴에서 `1`(원클릭 배포)을 선택하세요. 도메인(비워도 됨)과 모델 공급자를 입력하면 나머지는 자동입니다. 보통 5~15분(장비와 네트워크에 따라 다름).

@@ -51,8 +51,8 @@ UI は**プレーンテキストのメニュー**。番号を入力するだけ�
 > **必ず root で実行してください** —— 専用サービスユーザーの作成、`/etc/hermes-vps` への書き込み、systemd サービスの導入、ファイアウォールと 80/443 の設定を行うため、すべての管理操作に **root が必須**です。一般ユーザーが実行できるのは `--help` / `version` / `selftest` のみ(診断と CI 用)。
 >
 > ```bash
-> sudo bash hermes-vps.sh       # 対話メニューを開く(推奨)
-> sudo hermes-vps install       # 単一コマンドの実行
+> sudo hermes-vps                # 対話メニューを開く(推奨)
+> sudo hermes-vps install        # 単一コマンドの実行
 > ```
 >
 > 一般ユーザーで実行した場合は明確に拒否し、使用すべき `sudo` コマンドを提示します(無言の失敗や途中終了はしません)。
@@ -63,16 +63,26 @@ UI は**プレーンテキストのメニュー**。番号を入力するだけ�
 # 1) サーバーにログイン
 ssh root@<あなたのサーバー>
 
-# 2) インストール(最新 Release を取得し sha256 検証のうえ /usr/local/bin に入れます)
-curl -fsSL https://raw.githubusercontent.com/MinimaxFlora/hermes-agent-deploy/main/install.sh | bash
+# 2) インストール:最新 Release → sha256 検証 → /usr/local/bin
+curl -fsSL https://raw.githubusercontent.com/MinimaxFlora/hermes-agent-deploy/main/install.sh | sudo bash
 
-# 3) メニューを開く(初回は 1 を選択)
-hermes-vps
+# 3) 対話メニューを開く(初回は 1 を選択)
+sudo hermes-vps
+```
 
-# その他
-bash install.sh --check              # 導入済みと最新版の比較
-bash install.sh --version v1.0.0       # バージョン指定
-bash install.sh --to ~/.local/bin    # 非 root なら任意のディレクトリへ
+**一般ユーザーの場合**:ツール本体は root で実行する必要があるため、自分の `~/.local/bin` に入れて `sudo` で起動します:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/MinimaxFlora/hermes-agent-deploy/main/install.sh | bash                # ~/.local/bin に導入(root 不要)
+sudo ~/.local/bin/hermes-vps           # root としてメニューを起動
+```
+
+インストーラの主なオプション(パイプ形式では `bash -s --` で引数を渡します。install.sh を保存済みなら `bash install.sh …` でも可):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/MinimaxFlora/hermes-agent-deploy/main/install.sh | bash -s -- --check            # 導入済みと最新版の比較
+curl -fsSL https://raw.githubusercontent.com/MinimaxFlora/hermes-agent-deploy/main/install.sh | bash -s -- --version v1.0.0   # バージョン指定
+curl -fsSL https://raw.githubusercontent.com/MinimaxFlora/hermes-agent-deploy/main/install.sh | bash -s -- --to ~/.local/bin  # 任意のディレクトリへ(非 root)
 ```
 
 最初はメニューの `1`(ワンクリック導入)を選択してください。ドメイン(空欄可)とモデルプロバイダーを入力すれば、あとは自動です。所要 5〜15 分(マシンとネットワーク次第)。
