@@ -29,14 +29,20 @@ TEST_PORT=18088
 DASH_PORT=19119
 API_PORT=18642
 
+# 假上游用 Python 起静态服务(Debian 上只有 python3)
+PY_BIN="$(command -v python3 || command -v python || true)"
+if [[ -z "$PY_BIN" ]]; then
+    echo "跳过:需要 python3 起假上游"; exit 0
+fi
+
 # 假上游:两个目录,index.html 用不同标记
 mkdir -p "$SANDBOX/dash" "$SANDBOX/api" "$SANDBOX/log"
 echo "THIS-IS-DASHBOARD" >"$SANDBOX/dash/index.html"
 echo "THIS-IS-API"       >"$SANDBOX/api/index.html"
 
-(cd "$SANDBOX/dash" && python -m http.server "$DASH_PORT" >/dev/null 2>&1) &
+(cd "$SANDBOX/dash" && "$PY_BIN" -m http.server "$DASH_PORT" >/dev/null 2>&1) &
 DASH_PID=$!
-(cd "$SANDBOX/api" && python -m http.server "$API_PORT" >/dev/null 2>&1) &
+(cd "$SANDBOX/api" && "$PY_BIN" -m http.server "$API_PORT" >/dev/null 2>&1) &
 API_PID=$!
 sleep 2
 
