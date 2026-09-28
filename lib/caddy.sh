@@ -131,7 +131,11 @@ hv_caddy_prepare_runtime() {
         install -d -m 755 "$HV_CADDY_LOG_DIR"
         hv_warn "无法把 $HV_CADDY_LOG_DIR 归属给 $u,已建为 755(若仍写不进日志,Caddy 会启动失败)"
     fi
+    # 目录里如果残留 root 拥有的日志文件(例如有人用 root 跑过一次 caddy),
+    # Caddy 会以 "open ...: permission denied" 启动失败 —— 这里一并修属主。
+    chown -R "$u:$u" "$HV_CADDY_LOG_DIR" 2>/dev/null || true
     install -d -o "$u" -g "$u" -m 700 /var/lib/caddy 2>/dev/null || true
+    [[ -d /var/lib/caddy ]] && chown -R "$u:$u" /var/lib/caddy 2>/dev/null || true
     hv_state_set CADDY_RUN_USER "$u"
     return 0
 }

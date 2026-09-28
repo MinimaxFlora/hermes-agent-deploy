@@ -21,6 +21,7 @@ fi
 SANDBOX="$(mktemp -d)"; trap 'rm -rf "$SANDBOX"' EXIT
 export TMPDIR="$SANDBOX"
 export HV_SELF_DIR="$ROOT" HV_ETC="$SANDBOX/etc" HV_LOG_DIR="$SANDBOX/log" HV_BACKUP_DIR="$SANDBOX/bak"
+export HV_CADDY_LOG_DIR="$SANDBOX/caddy-logs"   # 别写到 /var/log/caddy(测试以 root 跑会留下 root 属主文件)
 export HV_NONINTERACTIVE=1 HV_NO_COLOR=1
 # shellcheck source=/dev/null
 for m in common ui account caddy; do source "${ROOT}/lib/${m}.sh"; done

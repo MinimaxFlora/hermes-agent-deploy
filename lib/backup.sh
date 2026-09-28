@@ -14,7 +14,7 @@ source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/account.sh"
 
 HV_BACKUP_KEEP="${HV_BACKUP_KEEP:-7}"
 
-# 打包时排除的内容(体积大且可重建)
+# 打包时排除的内容(体积大且可重建 / 运行期文件)
 HV_BACKUP_EXCLUDES=(
     "--exclude=.hermes/hermes-agent"
     "--exclude=.hermes/tools"
@@ -23,6 +23,8 @@ HV_BACKUP_EXCLUDES=(
     "--exclude=.hermes/image_cache"
     "--exclude=.hermes/*.venv"
     "--exclude=*.log"
+    "--exclude=*.sock"          # gateway.sock 等运行期 socket 不能打包
+    "--warning=no-file-changed" # 网关在跑时 state.db 会变,tar 返回 1 属正常
 )
 
 hv_backup_create() {
@@ -63,7 +65,11 @@ hv_backup_create() {
         rc=$?
         set -e
     fi
-    [[ $rc -eq 0 && -s "$out" ]] || { hv_err "备份失败"; return 1; }
+    # tar 的退出码 1 = "文件在读取时发生变化"之类的警告(网关正在跑就会这样),
+    # 这类警告不影响备份可用性,不算失败。
+    if [[ $rc -gt 1 || ! -s "$out" ]]; then
+        hv_err "备份失败(rc=$rc)"; return 1
+    fi
 
     chmod 600 "$out"
     hv_ok "备份完成:$(du -h "$out" | awk '{print $1}')  $out"
