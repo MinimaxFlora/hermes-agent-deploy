@@ -25,9 +25,9 @@ export HV_NONINTERACTIVE=1 HV_NO_COLOR=1
 # shellcheck source=/dev/null
 for m in common ui account caddy; do source "${ROOT}/lib/${m}.sh"; done
 
-TEST_PORT=18088
-DASH_PORT=19119
-API_PORT=18642
+TEST_PORT=$((18000 + ($$ % 400)))
+DASH_PORT=$((19000 + ($$ % 400)))
+API_PORT=$((18500 + ($$ % 400)))
 
 # 假上游用 Python 起静态服务(Debian 上只有 python3)
 PY_BIN="$(command -v python3 || command -v python || true)"
@@ -35,16 +35,29 @@ if [[ -z "$PY_BIN" ]]; then
     echo "跳过:需要 python3 起假上游"; exit 0
 fi
 
-# 假上游:两个目录,index.html 用不同标记
-mkdir -p "$SANDBOX/dash" "$SANDBOX/api" "$SANDBOX/log"
-echo "THIS-IS-DASHBOARD" >"$SANDBOX/dash/index.html"
-echo "THIS-IS-API"       >"$SANDBOX/api/index.html"
+# 防止上一次异常退出留下的孤儿进程占着端口(它们的工作目录已被删除 → 全 404)
+pkill -f "http.server ${DASH_PORT}" 2>/dev/null || true
+pkill -f "http.server ${API_PORT}"  2>/dev/null || true
 
-(cd "$SANDBOX/dash" && "$PY_BIN" -m http.server "$DASH_PORT" >/dev/null 2>&1) &
+# 假上游:两个目录,index.html 用不同标记
+# 注意 /v1/ 前缀不会被剥掉(OpenAI 客户端就是带 /v1 发的),所以 API 侧放在 v1/ 子目录
+mkdir -p "$SANDBOX/dash" "$SANDBOX/api/v1" "$SANDBOX/log"
+echo "THIS-IS-DASHBOARD" >"$SANDBOX/dash/index.html"
+echo "THIS-IS-API"       >"$SANDBOX/api/v1/index.html"
+
+(cd "$SANDBOX/dash" && exec "$PY_BIN" -m http.server "$DASH_PORT") >/dev/null 2>&1 &
 DASH_PID=$!
-(cd "$SANDBOX/api" && "$PY_BIN" -m http.server "$API_PORT" >/dev/null 2>&1) &
+(cd "$SANDBOX/api" && exec "$PY_BIN" -m http.server "$API_PORT") >/dev/null 2>&1 &
 API_PID=$!
 sleep 2
+# 上游真的起来了吗?没起来就直接报错,别让后面的断言给出误导性的结论
+for pair in "dash:$DASH_PORT" "api:$API_PORT"; do
+    port="${pair##*:}"
+    if ! curl -sS -m 5 -o /dev/null "http://127.0.0.1:${port}/v1/" 2>/dev/null && \
+       ! curl -sS -m 5 -o /dev/null "http://127.0.0.1:${port}/" 2>/dev/null; then
+        echo "✘ 假上游未启动(端口 $port)"; kill "$DASH_PID" "$API_PID" 2>/dev/null; exit 1
+    fi
+done
 
 # 渲染并改造成本地可跑的测试配置
 export HV_DASH_PORT="$DASH_PORT" HV_API_PORT="$API_PORT"
@@ -79,7 +92,9 @@ check "其余命中面板"       "http://127.0.0.1:${TEST_PORT}/"        "THIS-I
 
 kill "$CADDY_PID" 2>/dev/null || true
 kill "$DASH_PID" "$API_PID" 2>/dev/null || true
-wait 2>/dev/null || true
+pkill -f "http.server ${DASH_PORT}" 2>/dev/null || true
+pkill -f "http.server ${API_PORT}" 2>/dev/null || true
+sleep 1
 
 if [[ $fail -ne 0 ]]; then
     echo "── caddy 日志 ──"; sed 's/^/    /' "$SANDBOX/log/caddy.out" | tail -20
