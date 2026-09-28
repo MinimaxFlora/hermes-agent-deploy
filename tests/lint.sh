@@ -52,6 +52,14 @@ section "危险写法扫描"
 rm_bad="$(grep -rnE 'rm -rf[[:space:]]+\$[A-Za-z_]*[[:space:]]*$' "$ROOT"/lib/*.sh 2>/dev/null || true)"
 if [[ -z "$rm_bad" ]]; then c_ok "无未加引号的 rm -rf \$VAR"; else c_bad "发现未加引号的 rm -rf:"; printf '%s\n' "$rm_bad" | sed 's/^/      /'; fi
 
+# 切用户执行必须在目标用户家目录里起:su 继承调用者 cwd,从 /root 跑会让服务用户的进程站在
+# 无权限目录里 → 官方安装脚本内部的 find 报 "Failed to restore initial working directory: /root"
+if grep -qF 'su -s /bin/bash "$user" -c "cd ' "$ROOT/lib/12-run.sh"; then
+    c_ok "run_as_user_env 在目标用户家目录里执行"
+else
+    c_bad "run_as_user_env 未切到目标用户家目录(会继承 /root 等不可读 cwd)"
+fi
+
 head_bad="$(grep -rnE '\$\([^)]*\|[[:space:]]*head([[:space:]]|\))' "$ROOT"/lib/*.sh "$ROOT"/tests/*.sh 2>/dev/null | grep -v '|| ' | grep -v '2>/dev/null' || true)"
 if [[ -z "$head_bad" ]]; then c_ok "命令替换里的 | head 都已兜底"; else c_bad "命令替换里可能有未兜底的 | head:"; printf '%s\n' "$head_bad" | sed 's/^/      /'; fi
 
