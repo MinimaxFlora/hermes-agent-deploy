@@ -112,9 +112,11 @@ hv_backup_restore() {
     fi
     [[ -f "$archive" ]] || hv_die "备份文件不存在:$archive"
 
-    # --- 解包布局检查:只接受本工具生成的 .hermes/ 相对路径布局 ---
-    local first; first="$(tar tzf "$archive" 2>/dev/null | head -n1)"
-    [[ -n "$first" ]] || hv_die "无法读取备份包(损坏?):$archive"
+    # --- 列出条目(只列一次,顺便避免 tar | head 触发 SIGPIPE) ---
+    local listing=""
+    listing="$(tar tzf "$archive" 2>/dev/null)" || listing=""
+    [[ -n "$listing" ]] || hv_die "无法读取备份包(损坏?):$archive"
+    local first="${listing%%$'\n'*}"
     if [[ "$first" != ".hermes" && "$first" != .hermes/* ]]; then
         hv_die "不支持的备份包布局(首条目:$first)。请使用 hermes-vps 生成的备份。"
     fi
@@ -143,9 +145,11 @@ hv_backup_restore() {
     _hv_restore_restart_services() {
         if [[ "${_services_were_stopped:-0}" == "1" ]] && hv_has_systemd; then
             systemctl start hermes-gateway hermes-dashboard 2>/dev/null || true
+            _services_were_stopped=0
         fi
     }
-    trap '_hv_restore_restart_services' RETURN
+    # EXIT 也要挂:脚本被 hv_die/ERR 陷阱带出去时,RETURN 不会触发
+    trap '_hv_restore_restart_services' RETURN EXIT
 
     if hv_has_systemd; then
         systemctl stop hermes-gateway hermes-dashboard 2>/dev/null || true
@@ -163,7 +167,7 @@ hv_backup_restore() {
         [[ -e "$HV_UHOME/$name" ]] || continue
         mv "$HV_UHOME/$name" "$aside/$name"
         hv_dim "   挪走 $name"
-    done < <(tar tzf "$archive" 2>/dev/null | sed -n 's|^\.hermes/\([^/][^/]*\)\(/.*\)\?$|\1|p' | sort -u)
+    done < <(sed -n 's|^\.hermes/\([^/][^/]*\)\(/.*\)\?$|\1|p' <<<"$listing" | sort -u)
 
     # 就地解包(不经过 /tmp:/tmp 常是小容量 tmpfs,放不下)
     tar xzf "$archive" -C "$HV_USER_HOME" || {
@@ -186,6 +190,7 @@ hv_backup_restore() {
     hv_systemd_reload
     _hv_restore_restart_services
     _services_were_stopped=0
+    trap - RETURN EXIT
     hv_ok "恢复完成(回滚点:$aside)"
     hv_info "校验:hermes-vps doctor"
 }

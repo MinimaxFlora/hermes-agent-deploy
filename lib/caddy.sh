@@ -40,7 +40,7 @@ hv_caddy_install() {
     if [[ "$HV_PKG" == "apt" ]] && hv_confirm "使用 Caddy 官方 apt 源安装?(推荐,可自动更新)" yes; then
         if hv_caddy_install_apt; then
             hv_state_set CADDY_SOURCE "apt"
-            hv_ok "Caddy 已通过 apt 安装:$(caddy version 2>/dev/null | head -n1)"
+            hv_ok "Caddy 已通过 apt 安装:$(caddy version 2>/dev/null | sed -n '1p')"
             hv_caddy_ensure_user
             return 0
         fi
@@ -49,7 +49,7 @@ hv_caddy_install() {
 
     hv_caddy_install_binary || hv_die "Caddy 安装失败,请检查网络后重试"
     hv_state_set CADDY_SOURCE "binary"
-    hv_ok "Caddy 已安装:$("$HV_CADDY_BIN" version 2>/dev/null | head -n1)"
+    hv_ok "Caddy 已安装:$("$HV_CADDY_BIN" version 2>/dev/null | sed -n '1p')"
 }
 
 hv_caddy_install_apt() {

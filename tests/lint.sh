@@ -63,6 +63,15 @@ else
     pass "未发现删除系统目录的语句"
 fi
 
+# 5) 管道 + pipefail 陷阱:命令替换里用 "| head" 会让上游收到 SIGPIPE 而整体失败
+#    带 `|| 兜底` 的行不算(例如 out="$(... | head -c 32)" || out="")
+if grep -rnE '\$\([^)]*\| *head( |$)' "$ROOT"/lib "$ROOT"/bin 2>/dev/null | grep -v '||' >/dev/null 2>&1; then
+    bad "发现命令替换里未兜底的 '| head'(pipefail 下会被 SIGPIPE 判为失败),改用 sed -n '1p'"
+    grep -rnE '\$\([^)]*\| *head( |$)' "$ROOT"/lib "$ROOT"/bin 2>/dev/null | grep -v '||' | sed 's/^/      /'
+else
+    pass "未发现命令替换里未兜底的 '| head' 隐患"
+fi
+
 echo
 if [[ $fail -eq 0 ]]; then
     printf '\033[32m全部检查通过\033[0m\n'

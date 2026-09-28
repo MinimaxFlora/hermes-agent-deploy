@@ -137,7 +137,7 @@ hv_domain_resolves_to_this_host() {
     local domain="$1"
     hv_have getent || return 2
     local resolved
-    resolved="$(getent ahostsv4 "$domain" 2>/dev/null | awk '{print $1}' | sort -u | head -n1)"
+    resolved="$(getent ahostsv4 "$domain" 2>/dev/null | awk '{print $1}' | sort -u | sed -n '1p')" || resolved=""
     [[ -z "$resolved" ]] && return 1
 
     # 本机地址:优先内核路由源地址;私有/NAT 场景下(云主机很常见)取公网 IP 兜底
