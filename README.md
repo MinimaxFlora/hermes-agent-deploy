@@ -1,363 +1,176 @@
-# hermes-vps
+# hermes-vps · Hermes Agent 一键 VPS 部署与管理
 
-在全新的 VPS 上一键装好 **Hermes Agent**(Nous Research 开源自改进 AI Agent),配好模型、
-消息平台(QQ / 微信 / 企业微信 / Telegram / 飞书 / 钉钉 …)、Web 管理面板,
-再用 **Caddy** 把它安全地挂到自己的域名上(自动 HTTPS),同时提供一套 **可维护的运维命令**。
+**一个 `.sh` 文件**,在 Debian / Ubuntu VPS 上把 [Hermes Agent](https://github.com/NousResearch/hermes-agent) 装好、配好、并跑起来:
 
-一条命令开始:
+- 安装 Hermes + 独立系统用户 `hermes`(不用 root 跑进程)
+- 配好模型提供商(填 API Key → **立即用官方接口验证能否真的发对话**)
+- 接入 QQ / 微信 / 企业微信 / 飞书 / 钉钉 / Telegram / Discord / Slack / Matrix / 邮件等消息平台(填完凭据**当场验证平台 API 认不认账**)
+- Caddy 反代 + 域名自动 HTTPS(Let's Encrypt 自动签发续期)
+- 管理面板 / OpenAI 兼容 `/v1` 接口(带登录认证门)
+- 自检诊断、备份恢复、更新与每日自动更新、防火墙、卸载
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/<你的仓库>/main/install.sh | sudo bash -s -- install
+全程**纯文本菜单**:输入编号即可,不弹任何对话框。
+
 ```
+  ╭──────────────────────────────────────────────────────────────────────────╮
+  │  Hermes Agent · VPS 一键部署与管理                                       │
+  │  模型 / QQ / 微信 / 域名 HTTPS / 自检备份                                │
+  ╰──────────────────────────────────────────────────────────────────────────╯
 
-装完之后你拿到的是:
+  运行状态 ──────────────────────────────────────────────────────────────
+  Hermes      ● v0.21.5
+  服务        网关 ●  面板 ●  Caddy ●
+  域名        panel.example.com(证书剩 89 天)
+  模型        deepseek / deepseek-chat(已验证)
+  平台        已配置 2 个,已连接 1 个
+  ──────────────────────────────────────────────────────────────────────────
 
-| 项 | 说明 |
-|---|---|
-| 管理面板 | `https://你的域名`(用户名 `admin`,密码自动生成并写入 `/etc/hermes-vps/credentials.txt`) |
-| OpenAI 兼容 API | `https://你的域名/v1`(给 OpenWebUI / LobeChat / Cherry Studio 等) |
-| 消息机器人 | 按你选的平台接入,网关开机自启 |
-| 常驻服务 | `hermes-gateway.service`、`hermes-dashboard.service`、`caddy.service`(systemd 系统级) |
-| 运维命令 | `hermes-vps status / doctor / logs / backup / update / domain …` |
-
----
-
-## 目录
-
-- [它解决什么问题](#它解决什么问题)
-- [快速开始](#快速开始)
-- [部署后怎么用](#部署后怎么用)
-- [命令速查](#命令速查)
-- [域名与反向代理是怎么做的](#域名与反向代理是怎么做的)
-- [消息平台接入](#消息平台接入)
-- [模型提供商](#模型提供商)
-- [无人值守部署](#无人值守部署)
-- [安全设计](#安全设计)
-- [备份 / 更新 / 卸载](#备份--更新--卸载)
-- [架构与目录](#架构与目录)
-- [常见问题](#常见问题)
-- [与参考脚本的差异](#与参考脚本的差异)
-
----
-
-## 它解决什么问题
-
-Hermes Agent 官方提供的是一套通用安装器(`install.sh`),它负责装好程序本身,但
-"在 VPS 上当成一个长期在线的服务来跑"这一层需要自己拼:
-
-1. 用哪个系统用户跑、数据放哪、怎么开机自启;
-2. 面板要暴露到公网就必须开认证门(Hermes 在非回环绑定/声明公网 URL 时是 fail-closed 的);
-3. 反向代理怎么写才不让面板的 DNS-rebinding 防护把自己拦掉;
-4. 国内 VPS 拉 GitHub / PyPI 经常超时,要挑加速通道;
-5. QQ / 微信 / 企业微信 / 飞书 / 钉钉这些平台的凭据变量名各不相同;
-6. 端口、防火墙、证书、备份、更新、卸载……一堆一次性的手工活。
-
-本工具就是把这一层做成**可重复执行、可脚本化调用、出错能定位**的一套 shell 程序。
+  主菜单
+  ──────────────────────────────────────────────────────────────────────────
+     1) 一键部署 / 重新部署       安装 Hermes、面板、域名、平台接入
+     2) 模型提供商                填 API Key,并真实验证能否对话
+     3) 消息平台                  QQ / 微信 / 企业微信 / 飞书 / 钉钉 / TG
+     4) 域名与反向代理            Caddy 自动 HTTPS、证书状态
+     5) 面板与 API                登录密码、公网地址、/v1 开关
+     6) 服务管理                  启动 / 停止 / 重启 / 看日志
+     7) 自检与诊断                服务、端口、认证门、API、证书、备份
+     8) 备份与恢复                打包配置与密钥,可一键回滚
+     9) 更新                      立即更新 / 每日自动更新
+    10) 防火墙与安全              只放行 SSH / 80 / 443
+    11) 网络加速探测              GitHub / PyPI 国内镜像自动选优
+    12) 使用说明 / 帮助           常用命令与路径
+    13) 卸载                      逐项确认,绝不静默批量删
+  ──────────────────────────────────────────────────────────────────────────
+     0) 退出
+```
 
 ## 快速开始
 
 ```bash
-# 1) 一键部署(交互向导:域名 → 模型 → 平台 → 确认)
-curl -fsSL https://raw.githubusercontent.com/<你的仓库>/main/install.sh | sudo bash -s -- install
+# 1) 上机器
+ssh root@你的服务器
 
-# 2) 已经有本机仓库时
-sudo bash bin/hermes-vps install
+# 2a) 直接跑(把脚本传上去)
+bash hermes-vps.sh
 
-# 3) 全屏菜单(喜欢点选的话)
-sudo hermes-vps menu
+# 2b) 或一条命令下载后直接跑(仓库公开后)
+curl -fsSL https://raw.githubusercontent.com/<你的用户名>/hermes-vps/main/hermes-vps.sh -o /root/hermes-vps.sh
+bash /root/hermes-vps.sh
+
+# 3) 想以后随处可用的命令
+bash hermes-vps.sh self-install     # 装到 /usr/local/bin/hermes-vps
+hermes-vps                          # 之后直接敲这个就打开菜单
 ```
 
-前置条件:Debian 12/13 或 Ubuntu 20.04+(amd64 / arm64)、root 权限、
-域名 A 记录已指向本机(要用域名访问的话)、开放 80/443。
+首次进入菜单 → 选 `1` 一键部署 → 按提示填域名、选模型提供商即可。全部走完约 5~15 分钟(取决于机器性能与网络)。
 
-部署流程会依次做这些事(每步幂等,可反复执行):
+**前置条件**
 
-```
-环境检查 → 基础依赖 → 网络加速探测 → 参数确认 → 服务用户/目录
-→ 官方安装 Hermes → 配置模型 → 面板认证门 + API → 消息平台
-→ systemd 常驻服务 → Caddy 域名与证书 → 防火墙 → 总结报告
-```
+| 项目 | 要求 |
+|---|---|
+| 系统 | Debian 10+ / Ubuntu 20.04+(amd64 / arm64) |
+| 权限 | root |
+| 内存 | 建议 ≥ 1GB(不足时脚本会自动加 2GB swap 防 OOM) |
+| 磁盘 | ≥ 2GB 可用 |
+| 域名 | 可选。要用 `https://域名` 访问需把 A 记录指向本机公网 IP,并放行 80/443 |
+| 网络 | 国内机器会自动测速并切换 GitHub / PyPI 加速通道 |
 
-## 部署后怎么用
+## 子命令(可脚本化,等价于菜单)
 
 ```bash
-hermes-vps status      # 一屏看清:版本/服务/端口/域名/HTTPS 探活
-hermes-vps doctor      # 完整体检(含官方 hermes doctor)
-hermes-vps logs gateway
+hermes-vps                      # 打开交互菜单
+hermes-vps install [--yes]      # 一键部署(无人值守)
+hermes-vps model                # 模型提供商配置 + 验证
+hermes-vps platform             # 消息平台接入
+hermes-vps domain <域名>        # 配置 Caddy + 自动 HTTPS
+hermes-vps panel                # 面板凭据 / API 开关
+hermes-vps service restart      # start|stop|restart|status|logs [gateway|dashboard|caddy]
+hermes-vps diagnose             # 自检(服务/端口/认证门/API/证书/平台/备份)
+hermes-vps backup | restore     # 备份 / 恢复
+hermes-vps update [auto-update on|off|status]
+hermes-vps firewall             # 只放行 SSH / 80 / 443(不动已有规则)
+hermes-vps mirror --force       # 重新测速选国内加速通道
+hermes-vps selftest             # 自检脚本自身(语法、数据表、Caddyfile 渲染)
+hermes-vps uninstall            # 卸载(逐项列出路径,逐条确认)
+hermes-vps self-install         # 装成 /usr/local/bin/hermes-vps
 ```
 
-面板里可以直接改配置(`Config` / `Channels` / `Keys` / `MCP` / `Sessions` 页),
-命令行侧用 `hermes-vps model / platform / domain` 改,两边改的是同一份
-`~/.hermes/config.yaml` 与 `.env`。
+通用参数:`--yes`(全部自动确认)、`--non-interactive`(不提问)、`--force`、`--skip-browser`(少装浏览器组件省内存)、`--no-color`、`--debug`。
 
-## 命令速查
+## 支持的模型提供商
 
-```
-部署
-  install [--config 文件] [--domain d --email e --provider p --model m --platforms a,b]
-  menu
+DeepSeek · OpenRouter · 智谱 GLM · Kimi(Moonshot)· 阿里云百炼(Qwen)· MiniMax · OpenAI · Anthropic · Gemini · xAI · DeepInfra · NovitaAI · Fireworks · NVIDIA NIM · Hugging Face · 小米 MiMo · 腾讯 TokenHub · 阶跃星辰 · **自定义 OpenAI 兼容端点**(vLLM / Ollama / One-API / 自建中转)。
 
-配置
-  model list|show|configure [供应商 id]
-  platform list|status|configure <id>|setup <id>
-  web show | web password | web api on|off
-  domain set <域名> | domain apply | domain status
-  mirror probe [--force] | mirror show
+配置时会做两级验证:
 
-运维
-  status | doctor | logs <gateway|dashboard|caddy|install|agent|access>
-  service status|restart|stop|start|logs [gateway|dashboard]
-  backup create|list|restore [文件]|prune
-  update [--no-backup] | update --auto enable|disable|status
-  firewall setup
-  uninstall
+1. **直连校验** — 直接请求该提供商的 `/chat/completions`,2 秒内给出结论,并翻译错误(密钥被拒 / 余额不足 / 模型名错 / 端点不可达)。
+2. **真实对话** — 通过 Hermes 发一句 `只回答两个字:可用`,验证「模型 → 工具链 → 回复」整条链路。
 
-通用
-  -y/--yes  --non-interactive  --debug  --no-color  -v  -h
-```
+## 支持的消息平台
 
-所有功能都是**子命令 + 可脚本化**的;菜单只是同一批函数的一层壳,不是唯一入口。
-
-## 域名与反向代理是怎么做的
-
-Hermes 面板在绑定非回环地址或声明了公网 URL 时会**强制开启认证门**,
-并且有 DNS-rebinding 防护:`Host` 头必须和绑定地址/`public_url` 匹配。
-官方文档给出的部署姿势是:
-
-> 面板继续绑 `127.0.0.1`,设置 `dashboard.public_url=https://你的域名`,
-> 让本机的 TLS 反代从回环来连它 —— **回环代理自动被信任**,不需要放宽
-> `dashboard.trusted_proxies`。
-
-本工具就是这么做的:
-
-```
-浏览器 ──https──> Caddy(80/443,自动 Let's Encrypt)──http──> 127.0.0.1:9119  面板
-                                                        └──> 127.0.0.1:8642  OpenAI 兼容 API(/v1)
-```
-
-生成的 `/etc/caddy/Caddyfile` 结构:
-
-- `https://你的域名/healthz|/health` → 直接回 `ok`(探活用,不经过 Hermes)
-- `https://你的域名/v1/*` → `127.0.0.1:8642`(API,可随时 `web api off` 关掉)
-- 其余全部 → `127.0.0.1:9119`(面板;WebSocket/SSE 流式输出 Caddy 原生支持)
-- 统一压缩、HSTS、`-Server`、`X-Content-Type-Options` 等响应头
-
-改域名只需要:
-
-```bash
-hermes-vps domain set new.example.com --email me@example.com
-```
-
-它会重渲染 Caddyfile → `caddy validate` 校验 → 备份旧文件 → 写入 → reload;
-校验失败**绝不会** reload,现网配置不会被写坏。
-
-## 消息平台接入
-
-`hermes-vps platform list` 里的平台,分成三类处理:
-
-| 模式 | 含义 | 例子 |
+| 平台 | 接入方式 | 验证手段 |
 |---|---|---|
-| `env` | 填密钥即可跑 | QQ 机器人、企业微信、钉钉、Telegram、Discord、Slack、Matrix、邮箱 |
-| `meter` | 除密钥外还要公网回调/额外参数 | 飞书(webhook 模式)、Signal |
-| `qr` | 需要扫码/交互登录,由官方向导完成 | **个人微信**(iLink)、WhatsApp |
+| QQ 机器人 | 官方 Bot API v2(填 AppID/Secret) | 换 `access_token`,官方认账才算通过 |
+| 个人微信 | iLink 扫码登录(官方 setup 向导) | 登录态 + 网关连接日志 |
+| 企业微信 | AI 机器人(Bot ID/Secret) | 网关连接日志 |
+| 飞书 | 长连接(APP ID/Secret) | 换 `tenant_access_token` |
+| 钉钉 | Stream 模式(ClientID/Secret) | 换 `accessToken` |
+| Telegram | Bot Token | `getMe` |
+| Discord | Bot Token | `users/@me` |
+| Slack | Bot/App Token(Socket Mode) | `auth.test` |
+| Matrix | Homeserver + Access Token | `account/whoami` |
+| WhatsApp | 扫码 | 网关连接日志 |
+| 邮件 | IMAP + SMTP | 网关连接日志 |
+| OpenAI 兼容 API | API Key + 端口 | 无 key 401 / 带 key 200 |
 
-微信的两种不同接法(官方是两个适配器,别搞混):
+改完平台配置会自动重启网关并抓取连接日志,面板顶部状态栏也会显示「已连接 / 失败」。
 
-- `weixin` —— **个人微信**,走腾讯 iLink Bot API,**长轮询,不需要公网 webhook**;
-  首次要扫码登录:`hermes-vps platform setup weixin`(SSH 里出二维码)。
-- `wecom` —— **企业微信**,AI Bot WebSocket 网关,填 `WECOM_BOT_ID` + `WECOM_SECRET`。
+## 架构与落盘位置
 
-QQ 机器人走官方 QQ Bot API v2(私聊 / 群 @ / 频道),在
-[q.qq.com](https://q.qq.com) 建应用后填 `QQ_APP_ID` + `QQ_CLIENT_SECRET` 即可,
-无需公网回调。
+单文件脚本,内部按职责分区(核心 / 系统 / 模型 / 平台 / 面板与 Caddy / 运维 / 界面),数据表(提供商、平台)内嵌,新增一家只需加一行。
 
-新增一个平台 = 在 `data/platforms.conf` 里加一行(格式见文件头注释),
-脚本不用改。
+| 路径 | 内容 |
+|---|---|
+| `/opt/hermes/.hermes` | Hermes 数据:配置、`.env`(密钥)、skills、会话、日志 |
+| `/opt/hermes` | 服务用户 `hermes` 家目录(含 uv、venv) |
+| `/etc/hermes-vps/state.env` | 本工具状态(域名、开关等) |
+| `/etc/hermes-vps/credentials.txt` | 面板账号、密码、API Key(权限 600) |
+| `/etc/hermes-vps/mirror.env` | 使用的加速通道 |
+| `/etc/caddy/Caddyfile` | 反向代理配置(改前自动备份到 `.bak/`) |
+| `/var/backups/hermes-vps/` | 备份包(保留最近 7 份) |
+| `/var/log/hermes-vps/hermes-vps.log` | 本工具操作日志 |
 
-## 模型提供商
-
-`hermes-vps model list` 列出了 20+ 官方 provider id 与密钥变量名(OpenRouter / DeepSeek /
-智谱 GLM / Kimi / 阿里云百炼 / MiniMax / xAI / Gemini / Anthropic / OpenAI …
-以及自定义 OpenAI 兼容端点)。
-
-```bash
-hermes-vps model configure            # 菜单选择,依次问 key 和模型名
-hermes-vps model configure deepseek   # 指定供应商
-```
-
-约定:**密钥只写 `$HERMES_HOME/.env`,其它设置一律 `hermes config set`**
-(不手改 YAML,避免缩进把配置文件写坏),写完还会读回校验一次。
-
-## 无人值守部署
-
-```bash
-sudo cp etc/hermes-vps.conf.example /etc/hermes-vps/hermes-vps.conf
-sudo nano /etc/hermes-vps/hermes-vps.conf
-sudo hermes-vps install --config /etc/hermes-vps/hermes-vps.conf --non-interactive --yes
-```
-
-或者全靠命令行参数:
-
-```bash
-sudo hermes-vps install \
-  --domain hermes.example.com --email me@example.com \
-  --provider deepseek --key "$DEEPSEEK_KEY" --model deepseek-chat \
-  --platforms qqbot,wecom,telegram --with-api 1 --yes
-```
-
-`qr` 类平台(个人微信/WhatsApp)在无人值守模式下会自动跳过并打印后续步骤,之后
-在 SSH 里执行一次 `hermes-vps platform setup weixin` 扫码即可。
-
-## 安全设计
-
-- **独立服务用户**:专用的系统用户 `hermes`(无密码、禁止交互登录),数据只在
-  `/opt/hermes` 下,不污染 root 家目录。
-- **强制认证门**:面板密码与签名密钥在部署时随机生成(`openssl rand`),
-  写入 `/etc/hermes-vps/credentials.txt`(0600);面板永远绑回环,只经 Caddy 出去。
-- **API 单独密钥**:`API_SERVER_KEY` 独立随机生成,API 端口同样只绑回环。
-- **防火墙**:只**新增**放行 SSH(自动识别实际端口)/ 80 / 443,**不删任何现有规则**;
-  nft/iptables 裸规则不乱动,只提示。云厂商安全组需你在控制台放行。
-- **配置改动可回滚**:写 Caddyfile / `.env` 前自动备份,`caddy validate` 不通过就拒绝生效。
-- **卸载先列后删**:卸载会打印**每一条**将处理的路径并逐项确认,
-  不会静默批量删除;恢复备份也是"先改名挪走旧数据"而不是删除。
-
-## 备份 / 更新 / 卸载
-
-```bash
-hermes-vps backup create            # 打包 config/记忆/技能/会话/配对/凭据 + Caddy + 本工具状态
-hermes-vps backup list
-hermes-vps backup restore <文件>    # 先停服务,旧数据改名为 .pre-restore-<时间戳>
-hermes-vps backup create --label auto
-
-hermes-vps update                   # 更新前自动备份 → 官方 hermes update → 重启服务
-hermes-vps update --auto enable     # 每天 04:30 自动更新(systemd timer + 随机延迟)
-
-hermes-vps uninstall                # 逐项确认式卸载
-```
-
-代码/缓存不打包(`.hermes/hermes-agent`、`.hermes/tools`、日志、音频缓存),
-所以备份很小;这些内容官方安装器可以重建。
-
-## 架构与目录
-
-```
-hermes-vps/
-├── install.sh              # 引导脚本:curl | bash 用;本地仓库时直接转发给 bin/hermes-vps
-├── bin/hermes-vps          # 唯一入口:参数解析 + 子命令分发 + 菜单入口
-├── lib/
-│   ├── common.sh           # 常量/路径/日志/错误陷阱/状态读写/以服务用户执行命令
-│   ├── ui.sh               # 交互抽象层(whiptail ↔ 文本 ↔ 非交互),一份代码两用
-│   ├── detect.sh           # 发行版/架构/init/资源/端口/域名解析探测
-│   ├── deps.sh             # 基础依赖(幂等,按包管理器分支)
-│   ├── mirror.sh           # GitHub/PyPI 加速探测与落地(git insteadOf / uv.toml)
-│   ├── account.sh          # 服务用户、目录、.env 读写、服务用户侧启动器
-│   ├── hermes.sh           # 官方安装/更新/doctor 封装
-│   ├── provider.sh         # 模型提供商(数据驱动 data/providers.conf)
-│   ├── platform.sh         # 消息平台(数据驱动 data/platforms.conf)
-│   ├── webui.sh            # 面板认证门、public_url、OpenAI 兼容 API
-│   ├── caddy.sh            # Caddy 安装、Caddyfile 渲染/校验/重载、证书检查
-│   ├── service.sh          # systemd:网关服务(官方安装器)+ 面板服务(自建单元)
-│   ├── firewall.sh         # ufw/firewalld 只放行必需端口
-│   ├── backup.sh           # 备份/恢复/定时备份
-│   ├── lifecycle.sh        # 更新、自动更新定时器、卸载
-│   ├── doctor.sh           # 状态总览、诊断、日志查看
-│   ├── deploy.sh           # 一键部署编排(10 步流水线)
-│   └── menu.sh             # 交互菜单
-├── data/
-│   ├── providers.conf      # 提供商表(加一行 = 支持一个新提供商)
-│   ├── platforms.conf      # 平台表(加一行 = 支持一个新平台)
-│   └── templates/Caddyfile.tpl
-├── etc/hermes-vps.conf.example
-├── docs/ARCHITECTURE.md    # 设计说明与扩展指南
-└── tests/                  # 语法检查 + 逻辑冒烟测试
-```
-
-运行时落点:
-
-```
-/opt/hermes              服务用户家目录
-/opt/hermes/.hermes      HERMES_HOME:config.yaml / .env / state.db / skills / memories / sessions
-/etc/hermes-vps          state.env(安装状态) mirror.env(加速选择) credentials.txt(0600)
-/etc/caddy/Caddyfile     生成的站点配置(带 managed-by 标记)
-/var/log/hermes-vps      本工具的日志
-/var/backups/hermes-vps  备份
-/usr/local/bin/hermes-vps 命令
-```
-
-扩展方式、错误处理约定、幂等性说明见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)。
+服务:`hermes-gateway.service`、`hermes-dashboard.service`、`caddy.service`,全部开机自启。
+安全姿势:面板与 API 只监听 `127.0.0.1`(9119 / 8642),公网流量一律经 Caddy;改配置一律走 `hermes config set`,不手改 `config.yaml`。
 
 ## 常见问题
 
-**HTTPS 打不开 / 证书签发失败**
-1. `hermes-vps domain status` 看证书状态;
-2. `hermes-vps doctor` 里有 `https://域名/healthz` 探活结果;
-3. 依次排查:域名 A 记录是否指向本机 → 80/443 是否被云安全组挡住 →
-   `hermes-vps logs caddy` 看 ACME 报错;
-4. 调试期可用测试 CA(`--acme-ca https://acme-staging-v02.api.letsencrypt.org/directory`)避免触发正式环境限流。
+**证书签不下来?** 域名 A 记录必须指向本机公网 IP,且 80/443 对公网可达(云厂商安全组也要放行)。`hermes-vps diagnose` 会逐项指出问题。
 
-**面板能打开但一直转圈 / 聊天连不上**
-面板的实时聊天走 WebSocket(`/api/ws`、`/api/pty`)。Caddy 已原生支持;
-若中间还串了别的代理(CDN、隧道),需要允许 WebSocket 与长连接。
+**1GB 小内存机器装不动?** 脚本检测到内存 <1.8GB 且无 swap 时会自动创建 swapfile(被官方安装器 OOM 杀过,这是实测教训)。
 
-**网关重启后收不到消息**
-`hermes-vps logs gateway` 看平台连接日志;`hermes-vps platform status`
-检查凭据是否齐全、是否已启用。Telegram/Discord 这类平台需要 `/new` 后重新对话。
+**国内机器下载慢/失败?** 菜单 11 会测速并选择 GitHub / PyPI 加速通道,同时写进 git `insteadOf` 与用户级 `uv.toml`,让后续 `hermes update` 也走加速。
 
-**GitHub 拉取超时**
-`hermes-vps mirror probe --force` 重新测速;它会同时配置 git 的 `insteadOf` 前缀与
-uv/PyPI 索引,后续 `hermes update` 也走加速。
+**改完平台没反应?** 必须重启网关(菜单 6 → 4),或 `hermes-vps service restart gateway`。
 
-**装完想换域名**
-`hermes-vps domain set new.example.com`(自动重写 Caddyfile 并重新签发证书)。
+**卸载会删什么?** 菜单 13 会先逐项列出每个路径与用途,再一条条问你,默认全部保留;备份目录从不删除。
 
-## 与参考脚本的差异
+## 开发者备注:真机踩过的坑
 
-参考实现(`luci-app-openclaw` 的 `oc-config.sh`)是 3000+ 行单体脚本,靠一堆
-`json_set` 直接改 JSON、再同步 UCI,功能全但难维护。本工具在设计上做了这些区分:
+写这套脚本时在真实 Debian 13 机器(2 核 / 967MB)上逐个撞出来的,改代码时请留意:
 
-| 维度 | 参考脚本 | 本工具 |
-|---|---|---|
-| 结构 | 单文件 | 入口 + 18 个职责单一的模块 |
-| 配置写入 | 自己拼 `json_set` 改 JSON | 一律调用官方 CLI(`hermes config set` / `hermes doctor` 等) |
-| 平台/提供商 | 每个功能一段硬编码 | 数据表驱动(`data/*.conf`),加一行即扩展 |
-| 交互 | 只有菜单 | 交互层抽象:菜单 / 文本 / 非交互三态,同一份逻辑可脚本化调用 |
-| 幂等 | 部分 | 全流程幂等,可反复执行;写文件前备份,校验失败不回滚生效 |
-| 网络 | 假定畅通 | 自动探测 GitHub/PyPI 加速通道并落地到 git/uv 配置 |
-| 危险操作 | — | 删除/卸载先列清单逐项确认;防火墙只增不删 |
-| 可观测 | 打印日志 | 统一日志文件 + `doctor` 总览 + `logs <模块>` |
+1. `set -Eeuo pipefail` 下,`[[ ]] && cmd` 若是**函数最后一条语句**,函数返回非零会直接终止脚本 —— 结尾统一 `return 0` 或改 `if`。
+2. `grep` 无匹配返回 1,经由 `pipefail` 会中止;取值类函数必须显式兜住。
+3. `openssl rand | tr | head` 会因 SIGPIPE 让上游报错,改用 `openssl rand -base64` 后截断。
+4. `ERR` 陷阱要判断 `case "$-" in *e*)`:否则 `set +e` 的容错回退路径会被误判为致命错误。
+5. `caddy validate/fmt` 必须带 `--adapter caddyfile`(临时文件名没有 `Caddyfile` 提示)。
+6. Caddy 需要预先准备好 `/var/log/caddy` 目录与属主,否则服务起不来。
+7. 面板健康检查要等 `HERMES_DASHBOARD_READY`,固定 `sleep 2` 会误报。
+8. `tar` 退出码 1 是无害警告,2 才是真失败;回退分支里别引用已删除的临时目录。
+9. 恢复备份要「就地合并 + 只挪走将被覆盖的文件」,整目录替换会把安装弄残。
+10. 中文字符在终端占 2 列,画对齐的框必须按显示宽度算(`disp_len`),不能直接用 `${#s}`;`case` 单行写法分支间必须是 `;;` 而不是 `;`。
+11. 源码带 CRLF 时在 Linux 上会报 `$'\r': command not found` —— 提交前统一 LF(`.gitattributes` 已锁)。
 
----
+## 许可
 
-## 验证状态
-
-**已在真实 VPS 上完整验收通过**(Debian 13 / x86_64 / 2 核 967MB / 域名 `example.com`):
-
-| 项目 | 结果 |
-|---|---|
-| `tests/lint.sh`(语法/数据表/模块加载/危险 rm/`\| head` 隐患) | 通过 |
-| `tests/smoke.sh`(键值、表解析、Caddyfile 渲染与写入、CLI) | 通过 |
-| `tests/strict.sh`(用生产同款 `set -Eeuo pipefail` 跑基础原语) | 通过 |
-| `tests/caddyfile-validate.sh`(用真实 Caddy 走生产写入路径) | 通过(含"校验失败必须拒绝写入") |
-| `tests/caddy-routing.sh`(真实 Caddy + 假上游验证 `/healthz`、`/v1/*`、兜底面板) | 通过 |
-| `tests/acceptance.sh`(真机验收:服务/端口/认证门/API/HTTPS/证书/重启/备份/卸载预览) | **24/24 通过** |
-| 面板登录(正确凭据 200 + 会话 Cookie、错误密码 401、经域名 HTTPS 登录 200) | 通过 |
-| 消息平台接线(`platform set qqbot …` → 网关重启后 QQ 适配器真实发起连接) | 通过 |
-| 备份 → 恢复(标记文件回来、代码与 tools 保留、三服务自动拉起) | 通过 |
-| Let's Encrypt 证书自动签发 | 通过(`CN=example.com`,issuer Let's Encrypt) |
-| 幂等重跑 `install` | 通过(已装项自动跳过) |
-
-真机测试过程中修掉的真实缺陷(每一条都只在真实 VPS 上才暴露)记录在
-[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#真机测试发现的坑) 的"真机测试发现的坑"一节。
-
-验收命令(建议在目标机上也跑一遍):
-
-```bash
-bash tests/lint.sh && bash tests/smoke.sh && bash tests/strict.sh
-bash tests/caddyfile-validate.sh /usr/bin/caddy
-bash tests/caddy-routing.sh /usr/bin/caddy
-bash tests/acceptance.sh                 # 真机验收,输出 ✔/✘ 汇总
-```
-
----
-
-MIT License —— 见 [LICENSE](LICENSE)。
+MIT
