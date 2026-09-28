@@ -30,7 +30,7 @@ hv_caddy_installed() { hv_have caddy || [[ -x "$HV_CADDY_BIN" ]]; }
 hv_caddy_install() {
     hv_require_root
     if hv_caddy_installed; then
-        hv_ok "Caddy 已安装($(hv_caddy_cmd) version 2>/dev/null | head -n1)"
+        hv_ok "Caddy 已安装($("$(hv_caddy_cmd)" version 2>/dev/null | head -n1 || echo 版本未知))"
         return 0
     fi
 
@@ -131,8 +131,8 @@ StartLimitBurst=10
 Type=notify
 User=caddy
 Group=caddy
-ExecStart=${HV_CADDY_BIN} run --environ --config ${HV_CADDYFILE}
-ExecReload=${HV_CADDY_BIN} reload --config ${HV_CADDYFILE} --force
+ExecStart=${HV_CADDY_BIN} run --environ --config ${HV_CADDYFILE} --adapter caddyfile
+ExecReload=${HV_CADDY_BIN} reload --config ${HV_CADDYFILE} --adapter caddyfile --force
 TimeoutStopSec=5s
 LimitNOFILE=1048576
 PrivateTmp=true
@@ -207,7 +207,9 @@ hv_caddy_write_config() {
     "$(hv_caddy_cmd)" fmt --overwrite "$tmp" >/dev/null 2>&1 || true
     sed -i "1i ${HV_CADDY_MARKER}" "$tmp"
 
-    if ! "$(hv_caddy_cmd)" validate --config "$tmp" >/tmp/caddy-validate.out 2>&1; then
+    # 必须显式指定 --adapter caddyfile:临时文件名不带 "Caddyfile" 提示,
+    # Caddy 会按 JSON 解析而报 "invalid character '#'"。
+    if ! "$(hv_caddy_cmd)" validate --config "$tmp" --adapter caddyfile >/tmp/caddy-validate.out 2>&1; then
         hv_err "Caddyfile 校验失败,配置未生效:"
         sed 's/^/    /' /tmp/caddy-validate.out >&2
         rm -f "$tmp"
@@ -249,7 +251,7 @@ hv_caddy_apply() {
 hv_caddy_reload() {
     hv_require_root
     if [[ -f "$HV_CADDYFILE" ]]; then
-        if ! "$(hv_caddy_cmd)" validate --config "$HV_CADDYFILE" >/tmp/caddy-validate.out 2>&1; then
+        if ! "$(hv_caddy_cmd)" validate --config "$HV_CADDYFILE" --adapter caddyfile >/tmp/caddy-validate.out 2>&1; then
             hv_err "校验失败,拒绝重载:"
             sed 's/^/    /' /tmp/caddy-validate.out >&2
             return 1
