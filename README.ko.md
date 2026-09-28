@@ -48,14 +48,36 @@ UI는 **일반 텍스트 메뉴**입니다. 번호만 입력하면 됩니다. �
 
 ---
 
-> **반드시 root 로 실행하세요** —— 전용 서비스 사용자 생성, `/etc/hermes-vps` 쓰기, systemd 서비스 설치, 방화벽과 80/443 설정을 수행하므로 모든 관리 작업에 **root 가 필요**합니다. 일반 사용자가 실행할 수 있는 것은 `--help` / `version` / `selftest` 뿐입니다(진단 및 CI 용).
->
-> ```bash
-> sudo hermes-vps                # 대화형 메뉴 열기(권장)
-> sudo hermes-vps install        # 또는 단일 명령 실행
-> ```
->
-> 일반 사용자로 실행하면 명확히 거부하고 사용해야 할 `sudo` 명령을 안내합니다(조용한 실패나 중간 종료 없음).
+## 🧩 실행 모드: root 와 일반 사용자 모두 지원
+
+> **공식 설치 스크립트와 레이아웃이 동일합니다**: 공식 스크립트는 완전히 사용자 공간에서 동작합니다(root 불필요, sudo/apt 불필요, 시스템 디렉터리를 건드리지 않음) —
+> 코드는 `$HERMES_HOME/hermes-agent`, 실행 파일은 `$HOME/.local/bin/hermes`, 데이터는 `$HERMES_HOME`(기본 `~/.hermes`).
+> 이 도구는 두 모드 모두 `--hermes-home` / `--dir` 를 명시적으로 전달하므로 경로가 공식과 같습니다. 시스템 모드는 전용 서비스 사용자 `hermes`
+> (홈 `/opt/hermes`)로 실행해 systemd 로 관리하고 일반 사용자 환경과 분리한다는 점만 다릅니다.
+
+
+시작할 때 **자동 판별**하며, 추가 옵션 없이 두 모드 모두 사용할 수 있습니다:
+
+| | **시스템 모드(root)** | **사용자 모드(일반 사용자)** |
+|---|---|---|
+| 설정/상태 | `/etc/hermes-vps` | `~/.config/hermes-vps` |
+| 로그 | `/var/log/hermes-vps` | `~/.local/state/hermes-vps` |
+| 백업 | `/var/backups/hermes-vps` | `~/.local/share/hermes-vps/backups` |
+| Hermes 데이터 | `/opt/hermes/.hermes` (전용 `hermes` 계정) | `~/.hermes` (본인 계정) |
+| 서비스 | `systemd` 시스템 서비스(부팅 시 자동 시작) | `systemd --user`; 사용자 DBus 가 없으면 **백그라운드 프로세스 + PID 파일** 로 자동 전환 |
+| 도메인 + HTTPS(80/443) | ✅ 내장 Caddy 자동 인증서 | ⚠️ 권한 필요: 선택 시 `sudo` 재실행 안내 |
+| 방화벽 / swap / 시스템 패키지 | ✅ 자동 | ⚠️ 권한 필요(명확히 안내, 조용한 실패 없음) |
+| 모델 / 플랫폼(QQ, WeChat…)/ 대시보드 / 백업 / 자가진단 | ✅ | ✅ |
+
+```bash
+# 일반 사용자(사용자 모드, $HOME 밖은 건드리지 않음)
+curl -fsSL https://raw.githubusercontent.com/MinimaxFlora/hermes-agent-deploy/main/install.sh | bash -s -- --user
+
+# root(시스템 모드, 머신당 1개 인스턴스 권장)
+curl -fsSL https://raw.githubusercontent.com/MinimaxFlora/hermes-agent-deploy/main/install.sh | sudo bash
+```
+
+현재 모드는 `hermes-vps mode` 로 확인합니다. 상태 패널에도 「模式:…」이 표시되고, root 전용 항목은 「需要 root」로 표시됩니다.
 
 ## 🚀 60초 시작하기
 
@@ -63,26 +85,16 @@ UI는 **일반 텍스트 메뉴**입니다. 번호만 입력하면 됩니다. �
 # 1) 서버 접속
 ssh root@<서버 주소>
 
-# 2) 설치: 최신 Release → sha256 검증 → /usr/local/bin
-curl -fsSL https://raw.githubusercontent.com/MinimaxFlora/hermes-agent-deploy/main/install.sh | sudo bash
+# 2) 설치(최신 Release를 받아 sha256 검증 후 /usr/local/bin에 설치)
+curl -fsSL https://raw.githubusercontent.com/MinimaxFlora/hermes-agent-deploy/main/install.sh | bash
 
-# 3) 대화형 메뉴 열기(첫 실행은 1 선택)
-sudo hermes-vps
-```
+# 3) 메뉴 열기(첫 실행은 1 선택)
+hermes-vps
 
-**일반 사용자**: 도구 본체는 root 로 실행해야 하므로 자신의 `~/.local/bin` 에 설치한 뒤 `sudo` 로 실행합니다:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/MinimaxFlora/hermes-agent-deploy/main/install.sh | bash                # ~/.local/bin 에 설치(root 불필요)
-sudo ~/.local/bin/hermes-vps           # root 로 메뉴 실행
-```
-
-설치 스크립트 주요 옵션(파이프 형식에서는 `bash -s --` 로 인자를 전달합니다. install.sh 를 저장해 두었다면 `bash install.sh …` 도 가능):
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/MinimaxFlora/hermes-agent-deploy/main/install.sh | bash -s -- --check            # 설치본과 최신 버전 비교
-curl -fsSL https://raw.githubusercontent.com/MinimaxFlora/hermes-agent-deploy/main/install.sh | bash -s -- --version v1.0.0   # 특정 버전 설치
-curl -fsSL https://raw.githubusercontent.com/MinimaxFlora/hermes-agent-deploy/main/install.sh | bash -s -- --to ~/.local/bin  # 다른 경로에 설치(비 root)
+# 기타
+bash install.sh --check              # 설치본과 최신 버전 비교
+bash install.sh --version v1.0.0       # 특정 버전 설치
+bash install.sh --to ~/.local/bin    # 비 root라면 원하는 경로에
 ```
 
 처음에는 메뉴에서 `1`(원클릭 배포)을 선택하세요. 도메인(비워도 됨)과 모델 공급자를 입력하면 나머지는 자동입니다. 보통 5~15분(장비와 네트워크에 따라 다름).

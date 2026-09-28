@@ -3,7 +3,14 @@
 # =============================================================================
 
 ensure_user() {
-    require_root
+    # 用户态:不创建任何系统用户,只准备目录(就是当前用户自己)
+    if [[ "$HV_MODE" != "system" ]]; then
+        info "用户态模式:数据放在 $HHOME(当前用户 $(id -un)),不创建系统用户"
+        install -d -m 700 "$UHOME" 2>/dev/null || mkdir -p "$UHOME"
+        install -d -m 755 "$HHOME/.local" "$HHOME/.local/bin" 2>/dev/null || mkdir -p "$HHOME/.local/bin"
+        return 0
+    fi
+    require_root "创建服务用户 $HUSER"
     if id "$HUSER" >/dev/null 2>&1; then
         local cur; cur="$(getent passwd "$HUSER" | cut -d: -f6)"
         if [[ "$cur" != "$HHOME" ]]; then
@@ -46,10 +53,12 @@ hermes_install() {
     local script; script="$(mktemp /tmp/hermes-install-XXXXXX.sh)"
     chmod 644 "$script"
     if ! curl -fsSL --max-time 60 "$OFFICIAL_INSTALL" -o "$script"; then rm -f "$script"; die "下载安装脚本失败:$OFFICIAL_INSTALL"; fi
-    install -d -o "$HUSER" -g "$HUSER" -m 700 "$UHOME" 2>/dev/null || true
-    chown -R "$HUSER:$HUSER" "$UHOME" 2>/dev/null || true
+    install -d -o "$HUSER" -g "$HUSER" -m 700 "$UHOME" 2>/dev/null || mkdir -p "$UHOME"
+    if [[ "$HV_MODE" == "system" ]]; then chown -R "$HUSER:$HUSER" "$UHOME" 2>/dev/null || true; fi
 
-    local -a flags=(--non-interactive)
+    # 显式指定 HERMES_HOME/代码目录:官方脚本默认 $HOME/.hermes,这里与我们管理的路径对齐
+    # (官方布局:代码 $HERMES_HOME/hermes-agent、可执行 $HOME/.local/bin/hermes —— 两种模式一致)
+    local -a flags=(--non-interactive --hermes-home "$UHOME" --dir "$UHOME/hermes-agent")
     [[ "$SKIP_BROWSER" == "1" ]] && flags+=(--skip-browser)
 
     local rc=0

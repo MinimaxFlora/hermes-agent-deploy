@@ -46,7 +46,15 @@ pkg_install() {
 }
 
 deps_install() {
-    require_root
+    if [[ "$HV_MODE" != "system" ]]; then
+        # 用户态:装不了系统包,只检查并提示管理员
+        local -a miss=()
+        local b; for b in curl git tar openssl; do have "$b" || miss+=("$b"); done
+        if [[ ${#miss[@]} -eq 0 ]]; then ok "基础依赖齐备(用户态不需要系统包)"
+        else warn "缺少系统命令:${miss[*]}"; dim "请管理员执行:sudo apt-get install -y ${miss[*]}"; fi
+        return 0
+    fi
+    require_root "安装系统依赖"
     local -a pkgs=()
     case "$PKG" in
         apt)    pkgs=(curl git tar xz-utils openssl ca-certificates jq unzip) ;;
@@ -73,7 +81,11 @@ browser_libs_install() {
 # 小内存保护:1GB 机器装 Python/打包前端会被 OOM killer 杀掉
 swap_total_mb() { awk '/SwapTotal/{printf "%d", $2/1024}' /proc/meminfo 2>/dev/null || echo 0; }
 ensure_swap() {
-    require_root
+    if [[ "$HV_MODE" != "system" ]]; then
+        [[ "${MEM_MB:-0}" -lt 1800 ]] && dim "用户态:补 swap 需要 root,已跳过(小内存机器建议让管理员加 swap)"
+        return 0
+    fi
+    require_root "创建 swap 文件"
     local want="${SWAP_MB:-2048}" have_mb
     have_mb="$(swap_total_mb)"
     if [[ "${MEM_MB:-0}" -ge 1800 ]]; then info "内存 ${MEM_MB}MB,无需补充 swap"; return 0; fi

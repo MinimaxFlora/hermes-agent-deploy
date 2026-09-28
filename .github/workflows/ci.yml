@@ -66,16 +66,21 @@ jobs:
           fi
           echo "✔ 安装器自检通过"
 
-      - name: 权限关卡(root-only)自检
+      - name: 运行模式自检(非 root 自动走用户态;可由 HV_FORCE_MODE 覆盖)
         run: |
           set -euo pipefail
-          # 管理命令在非 root 下必须被拦下(退出码非 0);version/selftest 必须放行
-          if bash dist/hermes-vps.sh model >/dev/null 2>&1; then
-            echo "✘ 非 root 竟然执行了管理命令 —— root-only 关卡失效"; exit 1
-          fi
+          # CI 是普通用户:应自动识别为用户态,路径全部落在 $HOME,不碰 /etc、/var
+          out="$(bash dist/hermes-vps.sh mode)"
+          echo "$out"
+          grep -q '用户态' <<<"$out"
+          grep -q "$HOME" <<<"$out"
+          # 强制系统级时应解析成系统路径(root 环境下的行为)
+          sysout="$(HV_FORCE_MODE=system bash dist/hermes-vps.sh mode)"
+          echo "$sysout"
+          grep -q '/etc/hermes-vps' <<<"$sysout"
           bash dist/hermes-vps.sh version >/dev/null
           bash dist/hermes-vps.sh selftest >/dev/null
-          echo "✔ root-only 关卡生效;version/selftest 允许非 root"
+          echo "✔ 双模式路径解析正确;version/selftest 正常"
 
       - name: 产物自检(输出保持可见,便于定位 CI 环境差异)
         run: |

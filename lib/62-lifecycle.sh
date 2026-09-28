@@ -23,7 +23,7 @@ uninstall_preview() {
         if [[ -e "$path" ]]; then printf '    %s[%s]%s %s  %s(%s)%s\n' "$Y" "$kind" "$N" "$path" "$DM" "$note" "$N"
         else printf '    %s[跳过]%s %s  %s(不存在)%s\n' "$DM" "$N" "$path" "$DM" "$N"; fi
     done
-    printf '    %s[保留]%s /var/backups/hermes-vps/ (备份永远保留)\n' "$G" "$N"
+    printf '    %s[保留]%s %s/ (备份永远保留)\n' "$G" "$N" "$BACKUP_DIR"
     printf '    %s[保留]%s 防火墙规则、swap、系统依赖(不还原)\n' "$G" "$N"
 }
 

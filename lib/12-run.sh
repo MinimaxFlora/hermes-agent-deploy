@@ -17,12 +17,17 @@ run_as_user_env() { # run_as_user_env <user> [KEY=VAL…] -- cmd args…
         done <"$MIRROR_FILE"
     fi
     env_args+=("${extra[@]}")
-    # 关键:切用户后必须落在"该用户自己的家目录"里执行。否则会继承调用者的 cwd
-    # (常见是 /root,权限 700,目标用户读不了),目标用户的进程就站在一个自己无权限的目录里 ——
-    # 官方安装脚本内部的 find 会报 "Failed to restore initial working directory: /root: Permission denied"。
+    # 切用户后必须落在"该用户自己的家目录"里执行,否则会继承调用者的 cwd(常见是 /root,
+    # 权限 700,目标用户读不了)→ 官方安装脚本内部的 find 报
+    # "Failed to restore initial working directory: /root: Permission denied"。
     local q_cmd; q_cmd="$(printf '%q ' "$@")"
     local q_home; q_home="$(printf '%q' "$home")"
-    env -i "${env_args[@]}" su -s /bin/bash "$user" -c "cd $q_home 2>/dev/null || cd /; $q_cmd"
+    if [[ "$user" == "$(id -un)" ]]; then
+        # 用户态:要跑的就是自己,无需 su(也就不会因缺权限而失败)
+        env -i "${env_args[@]}" bash -c "cd $q_home 2>/dev/null || cd /; $q_cmd"
+    else
+        env -i "${env_args[@]}" su -s /bin/bash "$user" -c "cd $q_home 2>/dev/null || cd /; $q_cmd"
+    fi
 }
 run_as_user() { local u="$1"; shift; run_as_user_env "$u" -- "$@"; }
 hh() { # 以 hermes 用户运行 hermes 子命令(自动带 HERMES_HOME)

@@ -48,14 +48,34 @@ The UI is a **plain text menu** — type a number and you are done. No dialog bo
 
 ---
 
-> **Must run as root** — the tool creates a service user, writes `/etc/hermes-vps`, installs systemd services and configures the firewall plus ports 80/443, so every management action **requires root**. Only `--help` / `version` / `selftest` are allowed for regular users (for diagnostics and CI).
->
-> ```bash
-> sudo hermes-vps                # open the interactive menu (recommended)
-> sudo hermes-vps install        # or run a single command
-> ```
->
-> Running it as a regular user is refused with the exact `sudo` command to use — never a silent half-finished run.
+## 🧩 Run modes: root and regular users are both supported
+
+> **Identical layout to the official installer**: the official script runs entirely in user space (no root, no sudo/apt, it never touches system directories) — code goes to `$HERMES_HOME/hermes-agent`, the executable is `$HOME/.local/bin/hermes`, data lives in `$HERMES_HOME` (default `~/.hermes`).
+> Both modes here pass `--hermes-home` / `--dir` explicitly, so paths match the official layout; system-wide mode merely runs it under the dedicated `hermes` service user (home `/opt/hermes`) so systemd can manage it and keep it isolated.
+
+
+The script detects your identity at startup; both modes are fully usable with no extra flags:
+
+| | **System-wide (root)** | **User mode (regular user)** |
+|---|---|---|
+| Config/state | `/etc/hermes-vps` | `~/.config/hermes-vps` |
+| Logs | `/var/log/hermes-vps` | `~/.local/state/hermes-vps` |
+| Backups | `/var/backups/hermes-vps` | `~/.local/share/hermes-vps/backups` |
+| Hermes data | `/opt/hermes/.hermes` (dedicated `hermes` user) | `~/.hermes` (your own account) |
+| Services | system `systemd` units (boot-start) | `systemd --user`; falls back to a **background process + PID file** when there is no user DBus |
+| Domain + HTTPS (80/443) | ✅ built-in Caddy with automatic certificates | ⚠️ privileged: selecting it offers to re-run via `sudo` |
+| Firewall / swap / OS packages | ✅ automatic | ⚠️ privileged (explicitly reported, never a silent failure) |
+| Models / platforms (QQ, WeChat…)/ dashboard / backups / self-check | ✅ | ✅ |
+
+```bash
+# Regular user (user mode, touches nothing outside $HOME)
+curl -fsSL https://raw.githubusercontent.com/MinimaxFlora/hermes-agent-deploy/main/install.sh | bash -s -- --user
+
+# root (system-wide; recommended, one instance per machine)
+curl -fsSL https://raw.githubusercontent.com/MinimaxFlora/hermes-agent-deploy/main/install.sh | sudo bash
+```
+
+Check the current mode with `hermes-vps mode`. The status panel also shows `模式:` and marks root-only entries as `需要 root`.
 
 ## 🚀 Quick start (60 seconds)
 
@@ -63,26 +83,16 @@ The UI is a **plain text menu** — type a number and you are done. No dialog bo
 # 1) Log in to your server
 ssh root@<your-server>
 
-# 2) Install: latest Release → sha256 verification → /usr/local/bin
-curl -fsSL https://raw.githubusercontent.com/MinimaxFlora/hermes-agent-deploy/main/install.sh | sudo bash
+# 2) Install (picks up the latest Release, verifies sha256, installs to /usr/local/bin)
+curl -fsSL https://raw.githubusercontent.com/MinimaxFlora/hermes-agent-deploy/main/install.sh | bash
 
-# 3) Open the interactive menu (choose 1 on first run)
-sudo hermes-vps
-```
+# 3) Open the menu (choose 1 on first run)
+hermes-vps
 
-**Regular user**: the tool itself must run as root, so install it into your own `~/.local/bin` and launch it via `sudo`:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/MinimaxFlora/hermes-agent-deploy/main/install.sh | bash                # installs to ~/.local/bin (no root needed)
-sudo ~/.local/bin/hermes-vps           # launch the menu as root
-```
-
-Installer options (with the pipe form pass flags via `bash -s --`; if you saved install.sh locally you can also run `bash install.sh …`):
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/MinimaxFlora/hermes-agent-deploy/main/install.sh | bash -s -- --check            # show installed vs latest
-curl -fsSL https://raw.githubusercontent.com/MinimaxFlora/hermes-agent-deploy/main/install.sh | bash -s -- --version v1.0.0   # install a specific version
-curl -fsSL https://raw.githubusercontent.com/MinimaxFlora/hermes-agent-deploy/main/install.sh | bash -s -- --to ~/.local/bin  # install elsewhere (non-root)
+# Other options
+bash install.sh --check              # show installed vs latest
+bash install.sh --version v1.0.0       # install a specific version
+bash install.sh --to ~/.local/bin    # install somewhere else (non-root)
 ```
 
 Pick `1` (one-click deploy) the first time: enter a domain (optional), choose a model provider, and the script does the rest. Expect 5–15 minutes depending on the machine and network.
