@@ -29,6 +29,8 @@ selftest() {
     cf="$(caddy_render "example.com" "" 0)"
     if printf '%s' "$cf" | grep -q '/v1/' ; then printf '    %s Caddyfile 关闭 API 时仍有 /v1 路由\n' "$NO_SYM"; fails=$((fails+1)); else printf '    %s Caddyfile 渲染(无 API):符合预期\n' "$OK_SYM"; fi
     if caddy_installed; then
+        # caddy validate 会打开日志写入器:先尽力准备日志目录,非 root 环境下用 HV_CADDY_LOG_DIR 重定位
+        mkdir -p "$CADDY_LOG_DIR" 2>/dev/null || true
         if caddy_validate "$(caddy_render "example.com" "a@b.c" 1)"; then printf '    %s 真实 caddy validate 通过\n' "$OK_SYM"; else printf '    %s caddy validate 失败\n' "$NO_SYM"; fails=$((fails+1)); fi
     else
         printf '    %s 未安装 caddy,跳过真机校验\n' "$(printf '%s·%s' "$DM" "$N")"

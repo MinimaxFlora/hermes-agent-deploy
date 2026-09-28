@@ -21,9 +21,8 @@ if ! { py="$(pick_python)"; }; then
     summary
     exit 0
 fi
-CADDY="${HV_CADDY_BIN:-}"
-[[ -z "$CADDY" && -x "${CADDY_BIN:-/nonexistent}" ]] && CADDY="$CADDY_BIN"
-[[ -z "$CADDY" ]] && CADDY="$(command -v caddy || true)"
+CADDY="${CADDY_BIN:-}"
+[[ -x "$CADDY" ]] || CADDY="$(command -v caddy || true)"
 if [[ -z "$CADDY" || ! -x "$CADDY" ]]; then
     c_info "未找到 caddy,跳过(CI 会先下载)"
     summary

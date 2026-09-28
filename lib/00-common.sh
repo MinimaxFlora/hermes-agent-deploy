@@ -37,9 +37,10 @@ HBIN="/opt/hermes/.local/bin/hermes"
 DASH_PORT="${DASH_PORT:-9119}"
 API_PORT="${API_PORT:-8642}"
 
-CADDYFILE="/etc/caddy/Caddyfile"
-CADDY_LOG_DIR="/var/log/caddy"
-CADDY_BIN="/usr/local/bin/caddy"
+CADDYFILE="${HV_CADDYFILE:-/etc/caddy/Caddyfile}"
+# Caddy 的 validate 会真的打开日志写入器,所以日志目录必须在非 root 环境也可写(测试/CI 用 HV_CADDY_LOG_DIR 重定位)
+CADDY_LOG_DIR="${HV_CADDY_LOG_DIR:-/var/log/caddy}"
+CADDY_BIN="${HV_CADDY_BIN:-/usr/local/bin/caddy}"
 
 OFFICIAL_INSTALL="https://hermes-agent.nousresearch.com/install.sh"
 REPO_URL="https://github.com/NousResearch/hermes-agent.git"
