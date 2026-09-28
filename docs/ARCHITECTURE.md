@@ -133,6 +133,25 @@ hv_deploy (lib/deploy.sh)
                     → 总结报告(URL/账号/凭据路径/常用命令)
 ```
 
+## 真机测试发现的坑
+
+以下每一条都是在真实 VPS(Debian 13 / 1GB 内存)上跑部署时才暴露的,已修并有对应测试守住:
+
+| # | 现象 | 根因 | 修法 / 守住它的测试 |
+|---|---|---|---|
+| 1 | 官方安装器在打包 Web 界面时进程被 `SIGKILL` | 1GB 内存无 swap,node 打包峰值 602MB,被 OOM killer 干掉(dmesg 有记录) | 安装前检测内存 <1.5GB 且无 swap 时自动创建 2GB swapfile 并写入 fstab(`hv_ensure_swap`) |
+| 2 | 通过 `/usr/local/bin/hermes-vps` 调用时找不到 `lib/` | 脚本用 `${BASH_SOURCE[0]}` 取目录,软链场景解析成 `/usr/local` | `readlink -f` 解析真实路径 |
+| 3 | 无人值守部署在"Caddyfile 已存在"处停下 | `--yes`/`--non-interactive` 在入口没有被解析(清理"死代码"时误删),`hv_confirm` 在无 TTY 下对 `no` 返回非零 | 通用开关在 `main` 统一解析;非交互下对发行版自带 Caddyfile 自动备份后覆盖;冒烟测试新增开关解析断言 |
+| 4 | 服务安装的"三级回退"从不生效 | 装了 `ERR` 陷阱后,`set +e` 容错路径上的失败也会触发陷阱并 `exit` | `hv_on_error` 只在 `errexit` 开启时终止;`tests/strict.sh` 用生产同款严格模式覆盖两种路径 |
+| 5 | 读不存在的键就整脚本中止 | `hv_kv_get` 里 `grep` 无匹配 + `pipefail` = 非零 → `set -e` 退出 | 显式兜底;新增 `tests/strict.sh` |
+| 6 | `caddy validate` 报 `invalid character '#' looking for beginning of value` | 临时文件名不带 `Caddyfile` 提示,Caddy 按 JSON 解析;生产代码漏了 `--adapter caddyfile`(而测试脚本自己加了,所以本地没发现) | 所有 `caddy fmt/validate/run/reload` 都显式带 `--adapter caddyfile`;`tests/caddyfile-validate.sh` 改为**调用生产函数**,不再走并行路径 |
+| 7 | Caddy 起来就 `open /var/log/caddy/...: permission denied` 退出 | apt 包不创建 `/var/log/caddy`;且该目录里若有 root 属主的旧日志文件,Caddy 以 caddy 用户打不开 | 新增 `hv_caddy_prepare_runtime`(目录+文件属主一起修),与"是否刚装 Caddy"解耦;验收脚本新增可写性断言 |
+| 8 | 备份报"备份失败" | `tar` 因"file changed as we read it"(网关在写 state)返回 1,被当成失败 | 排除 `*.sock`、加 `--warning=no-file-changed`、把 rc=1 视为成功 |
+| 9 | 恢复把安装弄残 / 在 `/tmp` 上失败 | 备份刻意不含代码与 tools,而恢复是"整目录挪走再解包";且 `/tmp` 常是小容量 tmpfs(实测 484MB),解包必然 no space | 改为**就地流式解包 + 只挪走将被覆盖的条目** + 解包前空间预检 + 布局校验;失败时用 `EXIT` 陷阱把服务拉回 |
+| 10 | 恢复/列表步骤 SIGPIPE 退出码 141 | `tar tzf ... \| head -n1` 提前关闭管道 | 一次性取全部条目再截断;`tests/lint.sh` 新增"命令替换里未兜底的 `\| head`"检查 |
+| 11 | 面板"端口未监听"误报 | 面板启动要 5~10 秒,而检查里固定 `sleep 2` | 改为轮询等待就绪(`hv_dashboard_wait_ready`) |
+| 12 | 域名解析校验在云主机上误报 | 主机在 NAT 后面,内核路由源地址是私网 IP | 私网地址时用公网 IP 兜底比较 |
+
 ## 扩展指南
 
 **加一个消息平台**:在 `data/platforms.conf` 加一行,可选的 env 变量写进"可选变量"

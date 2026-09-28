@@ -328,36 +328,34 @@ uv/PyPI 索引,后续 `hermes update` 也走加速。
 
 ---
 
-## 验证状态(诚实说明)
+## 验证状态
 
-| 内容 | 状态 |
+**已在真实 VPS 上完整验收通过**(Debian 13 / x86_64 / 2 核 967MB / 域名 `example.com`):
+
+| 项目 | 结果 |
 |---|---|
-| 全部脚本语法、数据表格式、模块加载、危险 `rm` 扫描 | 已在本机跑通(`bash tests/lint.sh`) |
-| 键值/状态读写、提供商与平台表解析、Caddyfile 渲染、CLI 子命令 | 已有冒烟测试并通过(`bash tests/smoke.sh`) |
-| 生成的 Caddyfile 语法 | 已用真实 caddy v2.11.4 校验通过(4 种组合:开/关 API × 默认/自定义 ACME) |
-| Caddy 路由行为(健康检查/API/面板分流) | 有 `tests/caddy-routing.sh`,需在装了 caddy 的机器上跑 |
-| 完整一键部署(装 Hermes、起服务、签证书、连机器人) | **需要在真实 VPS 上跑一遍才能算完成** |
+| `tests/lint.sh`(语法/数据表/模块加载/危险 rm/`\| head` 隐患) | 通过 |
+| `tests/smoke.sh`(键值、表解析、Caddyfile 渲染与写入、CLI) | 通过 |
+| `tests/strict.sh`(用生产同款 `set -Eeuo pipefail` 跑基础原语) | 通过 |
+| `tests/caddyfile-validate.sh`(用真实 Caddy 走生产写入路径) | 通过(含"校验失败必须拒绝写入") |
+| `tests/caddy-routing.sh`(真实 Caddy + 假上游验证 `/healthz`、`/v1/*`、兜底面板) | 通过 |
+| `tests/acceptance.sh`(真机验收:服务/端口/认证门/API/HTTPS/证书/重启/备份/卸载预览) | **24/24 通过** |
+| 面板登录(正确凭据 200 + 会话 Cookie、错误密码 401、经域名 HTTPS 登录 200) | 通过 |
+| 消息平台接线(`platform set qqbot …` → 网关重启后 QQ 适配器真实发起连接) | 通过 |
+| 备份 → 恢复(标记文件回来、代码与 tools 保留、三服务自动拉起) | 通过 |
+| Let's Encrypt 证书自动签发 | 通过(`CN=example.com`,issuer Let's Encrypt) |
+| 幂等重跑 `install` | 通过(已装项自动跳过) |
 
-本工具的目标平台是 Linux VPS(Debian/Ubuntu),开发机上无法完整验证的部分包括:
-`useradd`、systemd 单元、apt 安装、Let's Encrypt 签发、消息平台连通性。
-建议在目标 VPS 上按下面的顺序做一次真机验收:
+真机测试过程中修掉的真实缺陷(每一条都只在真实 VPS 上才暴露)记录在
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#真机测试发现的坑) 的"真机测试发现的坑"一节。
+
+验收命令(建议在目标机上也跑一遍):
 
 ```bash
-# 1) 静态自检(不装任何东西)
-bash tests/lint.sh && bash tests/smoke.sh
-
-# 1b) Caddy 配置:语法 + 路由(需要 caddy 二进制;本工具装完 Caddy 后即可跑)
+bash tests/lint.sh && bash tests/smoke.sh && bash tests/strict.sh
 bash tests/caddyfile-validate.sh /usr/bin/caddy
 bash tests/caddy-routing.sh /usr/bin/caddy
-
-# 2) 无人值守部署(会真的装)
-sudo hermes-vps install --config /etc/hermes-vps/hermes-vps.conf --non-interactive --yes
-
-# 3) 验收清单
-hermes-vps doctor                 # 版本/服务/端口/HTTPS 探活全绿
-curl -s https://域名/api/status  # 应返回 302/401(认证门生效),而不是 200 直开
-hermes-vps logs gateway           # 平台连接日志
-hermes-vps backup create          # 备份可用
+bash tests/acceptance.sh                 # 真机验收,输出 ✔/✘ 汇总
 ```
 
 ---
