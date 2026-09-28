@@ -2363,6 +2363,7 @@ svc_mark() { case "$1" in active) printf '%s' "$DOT_ON" ;; failed) printf '%s✘
 svc_mark_plain() { case "$1" in active) printf '●' ;; failed) printf '✘' ;; *) printf '◐' ;; esac; }
 
 main_menu() {
+    check_copy_drift
     while :; do
         clear_screen
         header
@@ -2600,6 +2601,25 @@ deploy_all() {
     pause
 }
 
+# 副本漂移护栏:防止"运行的是一份、系统命令是另一份"导致改了却没生效
+check_copy_drift() {
+    local other="/usr/local/bin/hermes-vps"
+    [[ -f "$other" ]] || return 0
+    [[ "$other" == "$SELF" ]] && return 0
+    local a b
+    a="$(md5sum "$SELF" 2>/dev/null | cut -d' ' -f1)" || a=""
+    b="$(md5sum "$other" 2>/dev/null | cut -d' ' -f1)" || b=""
+    [[ -n "$a" && "$a" == "$b" ]] && return 0
+    printf '
+  %s! 系统命令 %s 与当前运行的脚本不是同一版本%s
+' "$Y" "$other" "$N"
+    printf '  %s  运行中:%s(%s 行)  已安装:%s(%s 行)%s
+' "$DM" "$SELF" "$(wc -l <"$SELF")" "$other" "$(wc -l <"$other" 2>/dev/null)" "$N"
+    printf '  %s  同步命令:bash %s self-install%s
+' "$DM" "$SELF" "$N"
+    return 0
+}
+
 # ---------------------------------------------------------------------------
 # 使用说明
 # ---------------------------------------------------------------------------
@@ -2735,6 +2755,10 @@ main() {
         selftest) selftest ;;
         self-install|selfinstall)
             require_root
+            if [[ -f /usr/local/bin/hermes-vps ]] && ! cmp -s "$SELF" /usr/local/bin/hermes-vps; then
+                cp -p /usr/local/bin/hermes-vps "/usr/local/bin/hermes-vps.bak" 2>/dev/null || true
+                info "旧副本已备份到 /usr/local/bin/hermes-vps.bak"
+            fi
             install -m 755 "$SELF" /usr/local/bin/hermes-vps
             ok "已安装命令:/usr/local/bin/hermes-vps(任意目录输入 hermes-vps 即可打开菜单)" ;;
         *) err "未知命令:$cmd"; usage; exit 1 ;;
