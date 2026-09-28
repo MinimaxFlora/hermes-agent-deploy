@@ -4,7 +4,7 @@
 SHELL := /bin/bash
 FILES := $(wildcard lib/*.sh) bin/hermes-vps install.sh tests/*.sh
 
-.PHONY: help lint test test-caddy check fmt install-local
+.PHONY: help lint test test-caddy accept check fmt install-local
 
 help:
 	@echo "make lint         语法 + 数据文件 + 模块加载检查"
@@ -23,6 +23,9 @@ test:
 test-caddy:
 	@bash tests/caddyfile-validate.sh
 	@bash tests/caddy-routing.sh
+
+accept:
+	@bash tests/acceptance.sh
 
 check: lint test
 
