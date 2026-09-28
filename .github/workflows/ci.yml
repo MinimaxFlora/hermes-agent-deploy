@@ -50,7 +50,15 @@ jobs:
           if cat install.sh | bash -s -- --nope >/dev/null 2>&1; then
             echo "✘ 未知参数未被拒绝"; exit 1
           fi
-          # 端到端:dry-run 会真的下载 Release 资产并校验 sha256
+          # 端到端 A(严格):钉一个已存在的旧版本,必须完整走完"下载 → sha256 校验"
+          #   钉版本是为了不和 release 构建抢跑(打 tag 时新资产可能还在上传,latest 会 404)
+          if ! out2="$(cat install.sh | bash -s -- --version v1.0.0 --dry-run 2>&1)"; then
+            printf '%s\n' "$out2" | tail -4
+            echo "✘ 固定版本 v1.0.0 的 dry-run 失败"; exit 1
+          fi
+          printf '%s\n' "$out2" | tail -2
+
+          # 端到端 B(最新版):下载+校验;若恰好撞上"新 Release 正在上传/限流"则只记录不算失败
           out=""; st=0
           out="$(cat install.sh | bash -s -- --dry-run 2>&1)" || st=$?
           printf '%s\n' "$out" | tail -4
@@ -58,10 +66,10 @@ jobs:
             echo "✘ dry-run 在下载/校验环节失败"; exit 1
           fi
           if [[ $st -ne 0 ]]; then
-            if printf '%s' "$out" | grep -qE '无法获取最新版本|rate limit|速率|API rate'; then
-              echo "· CI 上拿不到 Release(限流),跳过 dry-run 断言"
+            if printf '%s' "$out" | grep -qE '无法获取最新版本|rate limit|速率|API rate|还没构建完成'; then
+              echo "· latest 暂时取不到(限流或资产还在上传),已由上面的钉版本断言覆盖"
             else
-              echo "✘ dry-run 因非限流原因失败"; exit 1
+              echo "✘ dry-run 因非竞态原因失败"; exit 1
             fi
           fi
           echo "✔ 安装器自检通过"
