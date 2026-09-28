@@ -121,7 +121,20 @@ _hv_load_all() {
 main() {
     local cmd="${1:-help}"; shift || true
 
-    # 通用参数优先(否则 install 的参数会被吞)
+    # 通用开关在这里统一解析(对所有子命令生效),剩余参数交给子命令
+    local -a _left=()
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -y|--yes)          HV_ASSUME_YES=1; shift ;;
+            --non-interactive) HV_NONINTERACTIVE=1; shift ;;
+            --debug)           HV_DEBUG=1; shift ;;
+            --no-color)        HV_NO_COLOR=1; shift ;;
+            *) _left+=("$1"); shift ;;
+        esac
+    done
+    if [[ ${#_left[@]} -gt 0 ]]; then set -- "${_left[@]}"; else set --; fi
+
+    # help/version 不需要载入模块
     if [[ "$cmd" == "help" || "$cmd" == "--help" || "$cmd" == "-h" ]]; then _hv_usage; return 0; fi
     if [[ "$cmd" == "version" || "$cmd" == "-v" || "$cmd" == "--version" ]]; then
         echo "hermes-vps ${HV_VERSION}"; return 0
