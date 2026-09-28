@@ -139,7 +139,9 @@ for c in "version" "help" "model list" "platform list"; do
 done
 
 # 通用开关必须真的被入口解析(--debug 会打开 set -x,能观察到)
-if bash "${ROOT}/bin/hermes-vps" mirror show --debug 2>&1 | grep -q '^+'; then
+# 注意:不能用 `cmd | grep -q`,grep 提前退出会让上游 SIGPIPE,pipefail 下误判
+_sw_out="$(bash "${ROOT}/bin/hermes-vps" mirror show --debug 2>&1 || true)"
+if grep -q '^+' <<<"$_sw_out"; then
     ok "入口解析通用开关(--debug 已生效)"
 else
     bad "入口未解析通用开关(--debug/--yes/--non-interactive 会变成空操作)"
