@@ -21,12 +21,13 @@ V="__HV_VERSION__"                 # 由 build.sh 注入
 SELF="${BASH_SOURCE[0]}"
 SELF="$(readlink -f "$SELF" 2>/dev/null || printf '%s' "$SELF")"
 
-ETC_DIR="/etc/hermes-vps"
+# 路径可用环境变量重定位(便于测试/沙箱以非 root 运行;生产用默认值)
+ETC_DIR="${HV_ETC_DIR:-/etc/hermes-vps}"
 STATE_FILE="$ETC_DIR/state.env"
 MIRROR_FILE="$ETC_DIR/mirror.env"
 CRED_FILE="$ETC_DIR/credentials.txt"
-TOOL_LOG_DIR="/var/log/hermes-vps"
-BACKUP_DIR="/var/backups/hermes-vps"
+TOOL_LOG_DIR="${HV_LOG_DIR:-/var/log/hermes-vps}"
+BACKUP_DIR="${HV_BACKUP_DIR:-/var/backups/hermes-vps}"
 
 HUSER="hermes"                 # 服务用户
 HHOME="/opt/hermes"            # 服务用户家目录

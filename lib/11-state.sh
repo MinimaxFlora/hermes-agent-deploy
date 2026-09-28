@@ -30,7 +30,12 @@ kv_del() {
     local tmp; tmp="$(mktemp)"; grep -vE "^[[:space:]]*(export[[:space:]]+)?${key}=" "$file" >"$tmp" || true
     cat "$tmp" >"$file"; rm -f "$tmp"
 }
-state_init() { mkdir -p "$ETC_DIR" "$TOOL_LOG_DIR" "$BACKUP_DIR"; [[ -f "$STATE_FILE" ]] || { : >"$STATE_FILE"; chmod 600 "$STATE_FILE"; }; }
+state_init() { # 建目录失败不再致命(非 root/只读系统下也应能给出清晰后续错误,而不是在此处崩)
+    mkdir -p "$ETC_DIR" "$TOOL_LOG_DIR" "$BACKUP_DIR" 2>/dev/null || true
+    if [[ ! -f "$STATE_FILE" ]]; then : >"$STATE_FILE" 2>/dev/null || true; fi
+    chmod 600 "$STATE_FILE" 2>/dev/null || true
+    return 0
+}
 st_set() { state_init; kv_set "$STATE_FILE" "$1" "$2"; }
 st_get() { kv_get "$STATE_FILE" "$1" "${2:-}"; }
 # API 开关:兼容旧版 state 里的 API_SERVER=on

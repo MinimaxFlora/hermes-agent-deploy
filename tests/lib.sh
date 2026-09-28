@@ -16,6 +16,15 @@ c_bad()  { printf '  \033[31m✘\033[0m %s\n' "$*"; FAIL=$((FAIL + 1)); FAILED_N
 c_info() { printf '  \033[2m·\033[0m %s\n' "$*"; }
 section() { printf '\n\033[1m== %s ==\033[0m\n' "$*"; }
 
+## 测试隔离:把工具的运行时目录整体重定位到临时目录
+## ⚠️ 必须在 source lib 之前设置(常量在 lib 加载时求值),否则非 root 环境下
+##    state_init 会去 mkdir /etc/hermes-vps 而报 Permission denied(CI 上真实踩过)
+HV_SANDBOX="${HV_SANDBOX:-$(mktemp -d "${TMPDIR:-/tmp}/hv-sandbox-XXXXXX")}"
+export HV_ETC_DIR="$HV_SANDBOX/etc"
+export HV_LOG_DIR="$HV_SANDBOX/log"
+export HV_BACKUP_DIR="$HV_SANDBOX/backups"
+mkdir -p "$HV_ETC_DIR" "$HV_LOG_DIR" "$HV_BACKUP_DIR"
+
 # 载入全部 lib(与入口的开发模式一致)
 # ⚠️ 必须在**顶层** source:若在函数里 source,`declare -A` 会变成函数局部变量,
 #    导致 disp_len 的缓存数组退化成索引数组(真机踩过:arithmetic syntax error)。
