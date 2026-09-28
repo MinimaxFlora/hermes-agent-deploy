@@ -83,6 +83,50 @@ f3="$(render 1 "https://acme-staging-v02.api.letsencrypt.org/directory")"
 assert_contains "$(cat "$f3")" "acme_ca https://acme-staging" "自定义 ACME CA"
 rm -f "$f" "$f2" "$f3"
 
+echo "── Caddy 配置写入流程(用桩 caddy 验证:校验→备份→写入→状态)──"
+# 测试桩:本段只写沙箱目录,不需要真实 root
+hv_require_root() { :; }
+mkdir -p "$SANDBOX/bin" "$SANDBOX/caddy"
+cat >"$SANDBOX/bin/caddy" <<'EOS'
+#!/usr/bin/env bash
+# 桩:模拟 caddy 的 fmt/validate/version 行为
+case "${1:-}" in
+    fmt)      exit 0 ;;
+    validate) [[ "${FAKE_CADDY_VALIDATE_FAIL:-0}" == "1" ]] && { echo "Error: unrecognized directive: bogus"; exit 1; }; exit 0 ;;
+    version)  echo "v2.10.0 (stub)"; exit 0 ;;
+    *)        exit 0 ;;
+esac
+EOS
+chmod +x "$SANDBOX/bin/caddy"
+export PATH="$SANDBOX/bin:$PATH"
+export HV_CADDYFILE="$SANDBOX/caddy/Caddyfile"
+export HV_CADDY_ETC="$SANDBOX/caddy"
+export HV_CADDY_LOG_DIR="$SANDBOX/caddy/logs"
+
+if hv_caddy_write_config "hermes.example.com" "me@example.com" 1 "" >/dev/null 2>&1; then
+    ok "写入 Caddyfile 成功"
+else
+    bad "写入 Caddyfile 失败"
+fi
+grep -q "managed-by: hermes-vps" "$HV_CADDYFILE" && ok "带 managed-by 标记" || bad "缺少 managed-by 标记"
+assert_eq "$(hv_state_get DOMAIN)" "hermes.example.com" "写入后状态记录了域名"
+
+# 二次写入(改域名)应产生备份,而不是覆盖丢失
+hv_caddy_write_config "new.example.com" "me@example.com" 0 "" >/dev/null 2>&1
+if ls "$SANDBOX/caddy/.bak"/Caddyfile.* >/dev/null 2>&1; then ok "改配置前自动备份旧 Caddyfile"; else bad "没有生成备份"; fi
+assert_contains "$(cat "$HV_CADDYFILE")" "new.example.com" "域名已更新"
+if grep -q 'reverse_proxy 127.0.0.1:8642' "$HV_CADDYFILE"; then bad "关闭 API 时仍写入 /v1 反代"; else ok "关闭 API 时不写 /v1 反代"; fi
+
+# 校验失败必须拒绝写入
+before_hash="$(md5sum "$HV_CADDYFILE" 2>/dev/null | awk '{print $1}')"
+if FAKE_CADDY_VALIDATE_FAIL=1 hv_caddy_write_config "bad.example.com" "me@example.com" 1 "" >/dev/null 2>&1; then
+    bad "校验失败时仍然写入了配置(危险)"
+else
+    ok "校验失败时拒绝写入"
+fi
+after_hash="$(md5sum "$HV_CADDYFILE" 2>/dev/null | awk '{print $1}')"
+assert_eq "$after_hash" "$before_hash" "校验失败后原配置未被改动"
+
 echo "── 服务单元生成(不落盘系统目录)──"
 unit="$(sed -n '1,200p' /dev/null)"
 # 直接校验生成逻辑里的关键片段
