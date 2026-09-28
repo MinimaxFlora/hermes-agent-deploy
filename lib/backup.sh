@@ -57,11 +57,11 @@ hv_backup_create() {
     rm -rf "$staged"
 
     if [[ $rc -ne 0 ]]; then
-        # 目录名不是 .hermes 时(tar -C 的相对路径问题)退回绝对路径打包
+        # 兜底:换一种 -C 组合再打一次,但保持 ".hermes/..." 的相对布局
         set +e
         tar czf "$out" "${HV_BACKUP_EXCLUDES[@]}" \
-            -C / "${HV_UHOME#/}" \
-            -C /etc caddy 2>/dev/null
+            -C "$(dirname "$HV_UHOME")" "$(basename "$HV_UHOME")" \
+            -C "$staged" systemd etc 2>/dev/null
         rc=$?
         set -e
     fi
@@ -112,6 +112,23 @@ hv_backup_restore() {
     fi
     [[ -f "$archive" ]] || hv_die "备份文件不存在:$archive"
 
+    # --- 解包布局检查:只接受本工具生成的 .hermes/ 相对路径布局 ---
+    local first; first="$(tar tzf "$archive" 2>/dev/null | head -n1)"
+    [[ -n "$first" ]] || hv_die "无法读取备份包(损坏?):$archive"
+    if [[ "$first" != ".hermes" && "$first" != .hermes/* ]]; then
+        hv_die "不支持的备份包布局(首条目:$first)。请使用 hermes-vps 生成的备份。"
+    fi
+
+    # --- 空间预检:解包是就地覆盖,需要能放下压缩包解压后的内容 ---
+    local need_mb avail_mb
+    need_mb="$(gzip -l "$archive" 2>/dev/null | awk 'NR==2{printf "%d", $2/1048576}')"
+    [[ -z "$need_mb" || "$need_mb" -le 0 ]] && need_mb=200
+    avail_mb="$(df -Pm "$HV_USER_HOME" 2>/dev/null | awk 'NR==2{print $4}')"
+    [[ -z "$avail_mb" ]] && avail_mb=0
+    if [[ "$avail_mb" -lt $((need_mb + 200)) ]]; then
+        hv_die "磁盘空间不足:恢复约需 $((need_mb + 200)) MB,当前可用 ${avail_mb} MB(先清理或换台机器)"
+    fi
+
     hv_warn "恢复会用备份内容覆盖以下位置:"
     printf '    %s            (Hermes 数据:config/记忆/技能/会话/凭据)\n' "$HV_UHOME"
     printf '    /etc/hermes-vps/      (本工具状态;仅当包内存在时)\n'
@@ -121,43 +138,54 @@ hv_backup_restore() {
 
     hv_confirm "确认继续恢复?" no || return 0
 
-    hv_has_systemd && { systemctl stop hermes-gateway hermes-dashboard 2>/dev/null || true; }
+    # 无论后续成功失败,都要把服务拉回运行状态(否则恢复失败会留下停摆的机器)
+    local _services_were_stopped=0
+    _hv_restore_restart_services() {
+        if [[ "${_services_were_stopped:-0}" == "1" ]] && hv_has_systemd; then
+            systemctl start hermes-gateway hermes-dashboard 2>/dev/null || true
+        fi
+    }
+    trap '_hv_restore_restart_services' RETURN
+
+    if hv_has_systemd; then
+        systemctl stop hermes-gateway hermes-dashboard 2>/dev/null || true
+        _services_were_stopped=1
+    fi
 
     local ts; ts="$(date +%Y%m%d-%H%M%S)"
     local aside="${HV_UHOME}.pre-restore-${ts}"
-    local tmp; tmp="$(mktemp -d)"
-    trap 'rm -rf "$tmp"' RETURN
+    install -d -m 700 "$aside"
 
-    tar xzf "$archive" -C "$tmp"
+    # 先从清单里取出 .hermes/ 下的顶层条目(不解包,不占空间)
+    local name
+    while IFS= read -r name; do
+        [[ -z "$name" ]] && continue
+        [[ -e "$HV_UHOME/$name" ]] || continue
+        mv "$HV_UHOME/$name" "$aside/$name"
+        hv_dim "   挪走 $name"
+    done < <(tar tzf "$archive" 2>/dev/null | sed -n 's|^\.hermes/\([^/][^/]*\)\(/.*\)\?$|\1|p' | sort -u)
 
-    # 备份包里的 .hermes 根(兼容两种打包路径)
-    local src="$tmp/$(basename "$HV_UHOME")"
-    [[ -d "$src" ]] || src="$tmp/.hermes"
+    # 就地解包(不经过 /tmp:/tmp 常是小容量 tmpfs,放不下)
+    tar xzf "$archive" -C "$HV_USER_HOME" || {
+        hv_err "解包失败。回滚点仍在:$aside"
+        hv_err "应急:把 $aside 里的内容拷回 $HV_UHOME 即可复原"
+        return 1
+    }
 
-    if [[ -d "$src" ]]; then
-        install -d -m 700 "$aside"
-        local entry name
-        shopt -s dotglob nullglob
-        for entry in "$src"/*; do
-            name="$(basename "$entry")"
-            # 只把"将被覆盖"的现存条目挪走(代码/tools 不在包里,自然不受影响)
-            if [[ -e "$HV_UHOME/$name" ]]; then
-                mv "$HV_UHOME/$name" "$aside/$name"
-                hv_dim "   挪走 $name"
-            fi
-        done
-        shopt -u dotglob nullglob
-        cp -a "$src/." "$HV_UHOME/"
+    # 附带的 /etc 部分(备份包里可能带 Caddyfile、本工具状态、systemd 单元)
+    local etctmp; etctmp="$(mktemp -d "${HV_USER_HOME}/.restore-etc.XXXXXX")"
+    if tar xzf "$archive" -C "$etctmp" 2>/dev/null --wildcards 'etc/*' 'systemd/*' && [[ -d "$etctmp/etc" || -d "$etctmp/systemd" ]]; then
+        [[ -d "$etctmp/etc" ]] && cp -a "$etctmp/etc/." "$HV_ETC/" 2>/dev/null || true
+        [[ -f "$etctmp/etc/Caddyfile" ]] && cp -p "$etctmp/etc/Caddyfile" /etc/caddy/Caddyfile 2>/dev/null || true
+        [[ -d "$etctmp/systemd" ]] && cp -a "$etctmp/systemd/"*.service /etc/systemd/system/ 2>/dev/null || true
     fi
-
-    [[ -d "$tmp/etc" ]] && cp -a "$tmp/etc/." "$HV_ETC/" 2>/dev/null || true
-    [[ -f "$tmp/etc/Caddyfile" ]] && cp -p "$tmp/etc/Caddyfile" /etc/caddy/Caddyfile 2>/dev/null || true
-    [[ -d "$tmp/systemd" ]] && cp -a "$tmp/systemd/"*.service /etc/systemd/system/ 2>/dev/null || true
+    rm -rf "$etctmp"
 
     chown -R "$HV_USER:$HV_USER" "$HV_USER_HOME" 2>/dev/null || true
     chmod 600 "$HV_UHOME/.env" 2>/dev/null || true
     hv_systemd_reload
-    hv_has_systemd && { systemctl start hermes-gateway hermes-dashboard 2>/dev/null || true; }
+    _hv_restore_restart_services
+    _services_were_stopped=0
     hv_ok "恢复完成(回滚点:$aside)"
     hv_info "校验:hermes-vps doctor"
 }
