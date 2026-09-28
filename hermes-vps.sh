@@ -191,6 +191,16 @@ kv_del() {
 state_init() { mkdir -p "$ETC_DIR" "$TOOL_LOG_DIR" "$BACKUP_DIR"; [[ -f "$STATE_FILE" ]] || { : >"$STATE_FILE"; chmod 600 "$STATE_FILE"; }; }
 st_set() { state_init; kv_set "$STATE_FILE" "$1" "$2"; }
 st_get() { kv_get "$STATE_FILE" "$1" "${2:-}"; }
+# API 开关:兼容旧版 state 里的 API_SERVER=on
+st_api_enabled() {
+    local v; v="$(st_get API_ENABLED)"
+    if [[ -z "$v" ]]; then
+        local o; o="$(st_get API_SERVER)"
+        case "$o" in on|1|true|yes) v=1 ;; *) v=0 ;; esac
+    fi
+    printf '%s' "$v"
+    return 0
+}
 cred_set() { mkdir -p "$ETC_DIR"; kv_set "$CRED_FILE" "$1" "$2"; chmod 600 "$CRED_FILE"; }
 cred_get() { kv_get "$CRED_FILE" "$1" "${2:-}"; }
 
@@ -802,8 +812,8 @@ model_chat_test() {
 
 # id|名称|模式|必需env|可选env|说明
 PLATFORMS=(
-"qqbot|QQ 机器人(官方 API v2)|env|QQ_APP_ID,QQ_CLIENT_SECRET|QQBOT_HOME_CHANNEL,QQ_ALLOWED_USERS|q.qq.com 建应用;私聊/群@/频道"
-"weixin|个人微信(iLink 扫码)|qr|WEIXIN_ACCOUNT_ID|WEIXIN_TOKEN,WEIXIN_DM_POLICY|长轮询,无需公网;首次扫码"
+"qqbot|QQ 机器人(官方 API v2)|qr|QQ_APP_ID,QQ_CLIENT_SECRET|QQBOT_HOME_CHANNEL,QQBOT_HOME_CHANNEL_NAME,QQ_ALLOWED_USERS,QQ_GROUP_ALLOWED_USERS,QQ_ALLOW_ALL_USERS|扫码上线(推荐)或填 AppID/Secret;q.qq.com 建应用"
+"weixin|个人微信(iLink 扫码)|qr|WEIXIN_ACCOUNT_ID|WEIXIN_TOKEN,WEIXIN_DM_POLICY,WEIXIN_ALLOWED_USERS,WEIXIN_HOME_CHANNEL|扫码登录;长轮询,无需公网"
 "wecom|企业微信 AI 机器人|env|WECOM_BOT_ID,WECOM_SECRET|WECOM_DM_POLICY,WECOM_ALLOWED_USERS|WebSocket 网关"
 "feishu|飞书 / Lark|env|FEISHU_APP_ID,FEISHU_APP_SECRET|FEISHU_CONNECTION_MODE,FEISHU_ALLOWED_USERS|长连接模式"
 "dingtalk|钉钉机器人|env|DINGTALK_CLIENT_ID,DINGTALK_CLIENT_SECRET|DINGTALK_ALLOWED_USERS|Stream 模式"
@@ -836,13 +846,41 @@ plat_enabled() { [[ "$(hcfg_get "platforms.$1.enabled")" == *true* ]]; }
 
 # 网关日志里的平台连接状态
 plat_live_state() {
-    local id="$1" log
+    local id="$1" log last
     have journalctl || { printf 'unknown'; return 0; }
-    log="$(journalctl -u hermes-gateway --since '-2 hours' --no-pager 2>/dev/null | grep -iE "(^|\W)${id}(\W|$)" | tail -n 20)" || log=""
-    if [[ "$log" == *"${id} connected"* || "$log" == *"✓ ${id}"* ]]; then printf 'connected'; return 0; fi
-    if [[ "$log" == *"${id} failed"* || "$log" == *"✗ ${id}"* ]]; then printf 'failed'; return 0; fi
-    if [[ -n "$log" ]]; then printf 'seen'; return 0; fi
-    printf 'unknown'
+    log="$(journalctl -u hermes-gateway --since '-2 hours' --no-pager 2>/dev/null | grep -iE "(^|[^a-z])${id}([^a-z]|$)" | tail -n 8)" || log=""
+    [[ -z "$log" ]] && { printf 'unknown'; return 0; }
+    last="$(printf '%s\n' "$log" | tail -n 1)"
+    if printf '%s' "$last" | grep -qiE "startup failed|failed to (start|connect|login)|connection failed|invalid|rejected|unauthorized|error"; then
+        printf 'failed'; return 0
+    fi
+    if printf '%s' "$last" | grep -qiE "connected|ready|started|logged in|polling|listening"; then
+        printf 'connected'; return 0
+    fi
+    printf 'seen'
+    return 0
+}
+
+# 进入官方平台向导(QQ 扫码上线 / 微信扫码登录都走这里)
+plat_official_setup() {
+    local id="$1"
+    hermes_installed || { warn "请先部署(菜单 1)"; pause; return 1; }
+    step "进入官方平台配置向导(选 ${id},按提示扫码或填凭据)"
+    dim "向导结束后回到本菜单;若卡住可按 Ctrl+C"
+    set +e
+    run_interactive_as_user "$UHOME/bin/hermes-run" gateway setup
+    set -e
+    hcfg "platforms.$id.enabled" "true" >/dev/null 2>&1 || true
+    local req v; req="$(plat_req "$id")"; local IFS=','
+    for v in $req; do
+        if [[ -n "$(env_get "$v")" ]]; then ok "$v 已保存"
+        else dim "$v 暂未出现在 .env(部分平台凭据存在 $UHOME 下的账号目录,属正常)"; fi
+    done
+    if confirm "重启网关并查看连接日志?" yes; then
+        restart_service hermes-gateway; sleep 8
+        printf '\n'; dim "网关状态:$(plat_live_state "$id")"; plat_show_log "$id"
+    fi
+    pause
 }
 
 plat_menu() {
@@ -865,8 +903,8 @@ plat_menu() {
             fi
         done
         rule
-        printf '    编号 = 配置(输入后立即验证);  %sv<编号>%s = 验证连接;  %st<编号>%s = 发测试消息;  0) 返回\n' "$C" "$N" "$C" "$N"
-        printf '    提示:%s微信个人号需扫码(会进入官方向导);QQ/飞书/钉钉等直接填凭据即可%s\n' "$DM" "$N"
+        printf '    编号 = 配置(输完凭据立即验证);  %sv<编号>%s = 验证连接;  %st<编号>%s = 发测试消息;  0) 返回\n' "$C" "$N" "$C" "$N"
+        printf '    提示:%sQQ / 微信 都支持官方扫码上线;飞书/钉钉/TG 等填凭据即可%s\n' "$DM" "$N"
         local ch=""; menu_choice ch "请选择"
         case "$ch" in
             0|"") return 0 ;;
@@ -886,12 +924,17 @@ plat_configure() {
     header "配置 ${nm}"
     dim "$(plat_note "$id")"
 
-    if [[ "$mode" == "qr" || "$id" == "weixin" ]]; then
-        warn "该平台需要交互式登录(扫码),无法在这里填凭据完成"
-        if confirm "现在进入官方向导扫码登录?" yes; then
-            plat_qr_setup "$id"
-        fi
-        return 0
+    if [[ "$mode" == "qr" ]]; then
+        printf '\n'
+        printf '    %s1)%s 官方扫码向导(推荐,AppID/Secret 由扫码自动获取)\n' "$BD" "$N"
+        printf '    %s2)%s 手填凭据写入 .env(适合已有 AppID/Secret)\n' "$BD" "$N"
+        printf '    %s0)%s 返回\n' "$BD" "$N"
+        local q=""; menu_choice q "请选择"
+        case "$q" in
+            1) plat_official_setup "$id"; return 0 ;;
+            2) : ;;
+            *) return 0 ;;
+        esac
     fi
 
     local v val
@@ -1040,30 +1083,13 @@ plat_send_test() {
     dim "用 hermes send 通过该平台发一条测试消息(需要平台的 home channel)"
     local out rc=0
     set +e
-    out="$(run_as_user_env "$HUSER" "HERMES_HOME=$UHOME" -- "$HBIN" send --platform "$pid" "hermes-vps 测试消息:如果你看到这条,说明 ${pid} 收发生了效。" 2>&1)"
+    out="$(run_as_user_env "$HUSER" "HERMES_HOME=$UHOME" -- "$HBIN" send -t "$pid" "hermes-vps 测试消息:如果你看到这条,说明 ${pid} 收发生了效。" 2>&1)"
     rc=$?
     set -e
-    if [[ $rc -eq 0 ]]; then ok "发送成功"; else err "发送失败(退出码 $rc):"; printf '%s\n' "$out" | tail -n 10 | sed 's/^/      /'; fi
-    dim "若提示需要 home channel:先在平台里给机器人发一条消息,或用 /sethome 设置"
+    if [[ $rc -eq 0 ]]; then ok "发送成功(通过 $pid 的 home channel)"
+    else err "发送失败(退出码 $rc):"; printf '%s\n' "$out" | tail -n 10 | sed 's/^/      /'; fi
+    dim "若提示需要 home channel:先在平台里给机器人发条消息,或 /sethome;也可指定目标 菜单不提供(用 hermes send -t ${pid}:chat_id)"
     pause
-}
-
-# 扫码类平台:进官方向导(保持 TTY)
-plat_qr_setup() {
-    local id="$1"
-    hermes_installed || { warn "请先部署(菜单 1)"; pause; return 1; }
-    step "进入官方平台配置向导(按提示扫码/粘贴凭据)"
-    dim "向导结束后用 Ctrl+C 或选择退出返回本菜单"
-    set +e
-    run_interactive_as_user "$UHOME/bin/hermes-run" gateway setup
-    set -e
-    hcfg "platforms.$id.enabled" "true" >/dev/null 2>&1 || true
-    local req v
-    req="$(plat_req "$id")"; local IFS=','
-    for v in $req; do
-        if [[ -n "$(env_get "$v")" ]]; then ok "$v 已保存"; else warn "$v 仍未配置"; fi
-    done
-    return 0
 }
 
 # =============================================================================
@@ -1108,12 +1134,12 @@ api_server_enable() { # 让 OpenAI 兼容 /v1 在本地端口可用
     hcfg "platforms.api_server.enabled" "true" >/dev/null 2>&1 || true
     hcfg "platforms.api_server.port" "$API_PORT" >/dev/null 2>&1 || true
     hcfg "platforms.api_server.host" "127.0.0.1" >/dev/null 2>&1 || true
-    st_set API_ENABLED "1"
+    st_set API_ENABLED "1"; st_set API_SERVER "on"
     ok "API Server 已开启(127.0.0.1:${API_PORT})"
 }
 api_server_disable() {
     hcfg "platforms.api_server.enabled" "false" >/dev/null 2>&1 || true
-    st_set API_ENABLED "0"
+    st_set API_ENABLED "0"; st_set API_SERVER "off"
     ok "API Server 已关闭"
     restart_service hermes-gateway || true
 }
@@ -1147,7 +1173,7 @@ dashboard_show_info() {
     [[ -n "$domain" ]] && printf '    面板(域名) : %shttps://%s/%s\n' "$BD" "$domain" "$N"
     printf '    管理账号   : %s%s%s\n' "$BD" "$u" "$N"
     printf '    密码/APIkey: 见 %s%s%s(600 权限)\n' "$BD" "$CRED_FILE" "$N"
-    if [[ "$(st_get API_ENABLED)" == "1" ]]; then
+    if [[ "$(st_api_enabled)" == "1" ]]; then
         [[ -n "$domain" ]] && printf '    API        : https://%s/v1  (OpenAI 兼容)\n' "$domain"
         printf '    API        : http://127.0.0.1:%s/v1\n' "$API_PORT"
     else
@@ -1585,13 +1611,13 @@ domain_configure() {
     confirm "用该域名写入 Caddy 配置并申请证书?" yes || { info "已取消"; pause; return 0; }
 
     if [[ "$(hcfg_get "platforms.api_server.enabled")" == *true* ]] && confirm "是否同时对外提供 OpenAI 兼容 API(/v1)?" yes; then
-        st_set API_ENABLED 1
+        st_set API_ENABLED 1; st_set API_SERVER on
     else
-        st_set API_ENABLED 0
+        st_set API_ENABLED 0; st_set API_SERVER off
     fi
     dashboard_webui "$domain"
     caddy_install || { pause; return 1; }
-    caddy_write_config "$domain" "$email" "$(st_get API_ENABLED 0)" || { pause; return 1; }
+    caddy_write_config "$domain" "$email" "$(st_api_enabled)" || { pause; return 1; }
     ok "HTTPS 已配置:https://${domain}/"
     dim "首次签发约需 10~30 秒;若失败请看:journalctl -u caddy -n 30"
     sleep 3
@@ -1908,7 +1934,7 @@ diagnose() {
         fi
         local code; code="$(curl -sS -m 12 -o /dev/null -w '%{http_code}' "https://${domain}/healthz" 2>/dev/null || echo 000)"
         [[ "$code" == "200" ]] && diag_add ok "HTTPS 探活 https://${domain}/healthz → 200" || diag_add fail "HTTPS 探活返回 ${code}"
-        if [[ "$(st_get API_ENABLED)" == "1" ]]; then
+        if [[ "$(st_api_enabled)" == "1" ]]; then
             local ac; ac="$(curl -sS -m 10 -o /dev/null -w '%{http_code}' "http://127.0.0.1:${API_PORT}/v1/models" 2>/dev/null || echo 000)"
             [[ "$ac" == "401" || "$ac" == "403" ]] && diag_add ok "API 鉴权生效(无 key → ${ac})" || diag_add warn "API 无 key 返回 ${ac}(期望 401)"
         fi
@@ -2216,7 +2242,7 @@ panel_menu() {
             1) credentials_write "$(st_get DOMAIN)"; info "凭据已写入 $CRED_FILE"; pause ;;
             2) env_set HERMES_DASHBOARD_BASIC_AUTH_PASSWORD "$(random_str 20)"; ok "密码已重置"; restart_service hermes-dashboard; credentials_write "$(st_get DOMAIN)"; dim "新密码在 $CRED_FILE"; pause ;;
             3) local u p; ask u "用户名" "$(env_get HERMES_DASHBOARD_BASIC_AUTH_USERNAME)"; ask_secret p "新密码(回车随机生成)"; [[ -z "$p" ]] && p="$(random_str 20)"; env_set HERMES_DASHBOARD_BASIC_AUTH_USERNAME "$u"; env_set HERMES_DASHBOARD_BASIC_AUTH_PASSWORD "$p"; restart_service hermes-dashboard; credentials_write "$(st_get DOMAIN)"; ok "账号已更新"; pause ;;
-            4) if [[ "$(st_get API_ENABLED)" == "1" ]]; then api_server_disable; else api_server_enable; fi; dashboard_webui "$(st_get DOMAIN)"; caddy_write_config "$(st_get DOMAIN)" "$(st_get ACME_EMAIL)" "$(st_get API_ENABLED 0)" 2>/dev/null || true; pause ;;
+            4) if [[ "$(st_api_enabled)" == "1" ]]; then api_server_disable; else api_server_enable; fi; dashboard_webui "$(st_get DOMAIN)"; caddy_write_config "$(st_get DOMAIN)" "$(st_get ACME_EMAIL)" "$(st_api_enabled)" 2>/dev/null || true; pause ;;
             5) printf '\n'; dim "认证门:$(dashboard_verify_gate)"; dashboard_login_test; pause ;;
             0|"") return 0 ;;
             *) warn "无效编号"; sleep 1 ;;
@@ -2246,7 +2272,7 @@ service_menu() {
             3) restart_all_services; pause ;;
             4) restart_service hermes-gateway; sleep 3; printf '\n'; dim "网关最近日志:"; journalctl -u hermes-gateway -n 15 --no-pager 2>/dev/null | sed 's/^/      /' | tail -n 15; pause ;;
             5) restart_service hermes-dashboard; pause ;;
-            6) caddy_write_config "$(st_get DOMAIN)" "$(st_get ACME_EMAIL)" "$(st_get API_ENABLED 0)" || true; pause ;;
+            6) caddy_write_config "$(st_get DOMAIN)" "$(st_get ACME_EMAIL)" "$(st_api_enabled)" || true; pause ;;
             7) service_logs hermes-gateway ;;
             8) service_logs hermes-dashboard ;;
             9) service_logs caddy ;;
@@ -2362,7 +2388,7 @@ deploy_all() {
     progress "配置 Caddy 反向代理与 HTTPS"
     if [[ -n "$domain" ]]; then
         caddy_install
-        caddy_write_config "$domain" "$email" "$(st_get API_ENABLED 0)"
+        caddy_write_config "$domain" "$email" "$(st_api_enabled)"
         sleep 2
         local code; code="$(curl -sS -m 15 -o /dev/null -w '%{http_code}' "https://${domain}/healthz" 2>/dev/null || echo 000)"
         [[ "$code" == "200" ]] && ok "HTTPS 生效:https://${domain}/" || warn "域名探活 $code(证书可能还在签发)"
