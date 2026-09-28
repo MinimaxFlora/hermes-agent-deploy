@@ -253,26 +253,6 @@ hcfg() { # 写 config.yaml:一律走官方 CLI
 }
 hcfg_get() { hh config get "$1" 2>/dev/null | tr -d '\r' | sed -n '1p'; }
 
-# 服务用户侧的启动器(交互式向导/扫码要继承 TTY,不能走 env -i)
-write_runners() {
-    local dir="$UHOME/bin"
-    install -d -o "$HUSER" -g "$HUSER" -m 755 "$dir" 2>/dev/null || mkdir -p "$dir"
-    cat >"$dir/hermes-run" <<EOS
-#!/bin/sh
-HOME=$HHOME
-HERMES_HOME=$UHOME
-PATH=$HHOME/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
-export HOME HERMES_HOME PATH
-[ -f $MIRROR_FILE ] && { set -a; . $MIRROR_FILE; set +a; }
-exec $HBIN "\$@"
-EOS
-    chmod 755 "$dir/hermes-run"; chown "$HUSER:$HUSER" "$dir/hermes-run" 2>/dev/null || true
-}
-run_interactive_as_user() { # 保持 TTY:用于官方 setup 向导(微信扫码等)
-    write_runners
-    su -s /bin/bash "$HUSER" -c "$(printf '%q ' "$@")"
-}
-
 # =============================================================================
 #  环境探测 · 依赖 · 内存保护 · 网络加速 · 防火墙
 # =============================================================================
@@ -874,24 +854,208 @@ plat_live_state() {
     return 0
 }
 
-# 进入官方平台向导(QQ 扫码上线 / 微信扫码登录都走这里)
-plat_official_setup() {
+# ---------------------------------------------------------------------------
+# 脚本内扫码上线:直接调用官方适配器的扫码函数(不经过官方交互向导)
+#   运行环境特殊:依赖装在 Hermes 自己的运行时里,只有官方启动器能装配好,
+#   所以辅助模块写进 agent 目录,再用 `hermes --run-module <name>` 执行。
+# ---------------------------------------------------------------------------
+hermes_run_module() { # hermes_run_module <模块名> [参数…]
+    local name="$1"; shift
+    run_as_user_env "$HUSER" "HERMES_HOME=$UHOME" -- "$HBIN" --run-module "$name" "$@"
+}
+_qr_module_write() {
+    local dir="$UHOME/hermes-agent" f
+    [[ -d "$dir" ]] || { err "找不到 $dir(先部署)"; return 1; }
+    f="$dir/hv_vps_onboard.py"
+    cat >"$f" <<'PYEOF'
+"""hermes-vps 扫码上线助手:直接调用官方适配器,不经过官方交互向导。"""
+import asyncio
+import json
+import os
+import sys
+
+
+def _dump(path, data):
+    try:
+        with open(path, "w", encoding="utf-8") as fh:
+            json.dump(data or {}, fh, ensure_ascii=False)
+    except Exception as exc:  # pragma: no cover
+        print("  结果落盘失败: %s" % exc)
+
+
+def run_qq(out_path, timeout):
+    from gateway.platforms.qqbot import qr_register
+    creds = qr_register(timeout)
+    if not creds:
+        print("\n  QQ 扫码未完成(超时 / 取消 / 二维码多次过期)")
+        return 1
+    _dump(out_path, creds)
+    return 0
+
+
+def run_weixin(out_path, timeout, hermes_home):
+    from gateway.platforms.weixin import check_weixin_requirements, qr_login
+    if not check_weixin_requirements():
+        print("\n  缺少依赖:aiohttp / cryptography")
+        return 2
+    creds = asyncio.run(qr_login(hermes_home, timeout_seconds=timeout))
+    if not creds:
+        print("\n  微信扫码未完成(超时 / 取消)")
+        return 1
+    _dump(out_path, creds)
+    return 0
+
+
+def main():
+    if len(sys.argv) < 3:
+        print("用法: hv_vps_onboard <qq|weixin> <结果文件> [超时秒]")
+        return 2
+    mode, out_path = sys.argv[1], sys.argv[2]
+    timeout = int(sys.argv[3]) if len(sys.argv) > 3 else 600
+    hermes_home = os.environ.get("HERMES_HOME", "")
+    if mode in ("qq", "qqbot"):
+        return run_qq(out_path, timeout)
+    if mode in ("weixin", "wechat", "wx"):
+        return run_weixin(out_path, timeout, hermes_home)
+    print("未知平台: %s" % mode)
+    return 2
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main())
+    except KeyboardInterrupt:
+        print("\n已取消。")
+        sys.exit(130)
+PYEOF
+    chown "$HUSER:$HUSER" "$f" 2>/dev/null || true
+    chmod 644 "$f"
+    printf '%s' "$f"
+}
+_qr_module_cleanup() { rm -f "$UHOME/hermes-agent/hv_vps_onboard.py"; }
+
+json_get() { # json_get <文件> <键>
+    local file="$1" key="$2"
+    [[ -f "$file" ]] || return 1
+    if have jq; then jq -r --arg k "$key" '.[$k] // empty' "$file" 2>/dev/null | sed -n '1p'
+    else grep -oE "\"${key}\"[[:space:]]*:[[:space:]]*\"[^\"]*\"" "$file" 2>/dev/null | sed -E 's/.*:[[:space:]]*"([^"]*)"/\1/' | sed -n '1p'; fi
+    return 0
+}
+
+# 二维码渲染需要官方 messaging extra(qrcode 等)
+platform_qr_deps_ensure() {
+    local dir="$UHOME/hermes-agent" out=""
+    [[ "$(st_get QR_DEPS_OK)" == "1" ]] && return 0
+    [[ -d "$dir" ]] || return 1
+    cat >"$dir/hv_vps_check.py" <<'PYEOF'
+try:
+    import qrcode  # noqa: F401
+    print("QR_OK")
+except Exception:
+    print("QR_MISSING")
+PYEOF
+    chown "$HUSER:$HUSER" "$dir/hv_vps_check.py" 2>/dev/null || true
+    out="$(hermes_run_module hv_vps_check 2>/dev/null | tail -n1)" || out=""
+    rm -f "$dir/hv_vps_check.py"
+    [[ "$out" == *QR_OK* ]] && { st_set QR_DEPS_OK 1; return 0; }
+    step "补齐二维码与消息平台依赖(官方:hermes pm install --extra messaging)"
+    if run_as_user_env "$HUSER" "HERMES_HOME=$UHOME" -- "$HBIN" pm install --extra messaging; then
+        st_set QR_DEPS_OK 1
+        ok "依赖已就绪"
+    else
+        warn "依赖安装失败,二维码可能只显示链接(可直接在手机 QQ/微信里打开)"
+        return 1
+    fi
+    return 0
+}
+
+# 脚本内扫码:QQ / 微信
+platform_qr_onboard() {
     local id="$1"
     hermes_installed || { warn "请先部署(菜单 1)"; pause; return 1; }
-    step "进入官方平台配置向导(选 ${id},按提示扫码或填凭据)"
-    dim "向导结束后回到本菜单;若卡住可按 Ctrl+C"
+    platform_qr_deps_ensure || true
+
+    local out="$ETC_DIR/onboard-${id}.json"
+    rm -f "$out"; : >"$out"; chmod 600 "$out"
+    local mod="" rc=0
+    mod="$(_qr_module_write)" || { pause; return 1; }
+    step "正在申请二维码(用手机扫码完成授权)"
+    dim "二维码会显示在下面;按 Ctrl+C 可随时取消"
+    printf '\n'
     set +e
-    run_interactive_as_user "$UHOME/bin/hermes-run" gateway setup
+    hermes_run_module hv_vps_onboard "$id" "$out" "${HV_QR_TIMEOUT:-600}"
+    rc=$?
     set -e
+    rm -f "$mod"
+    printf '\n'
+    if [[ $rc -ne 0 ]]; then
+        warn "扫码流程未完成(退出码 $rc);可重试或改用手填凭据"
+        rm -f "$out"
+        pause
+        return 1
+    fi
+
+    local v
+    if [[ "$id" == "qqbot" ]]; then
+        local app_id secret openid
+        app_id="$(json_get "$out" app_id)"; secret="$(json_get "$out" client_secret)"; openid="$(json_get "$out" user_openid)"
+        if [[ -z "$app_id" || -z "$secret" ]]; then warn "返回结果不完整,未写入"; rm -f "$out"; pause; return 1; fi
+        env_set QQ_APP_ID "$app_id"
+        env_set QQ_CLIENT_SECRET "$secret"
+        ok "已写入 QQ_APP_ID / QQ_CLIENT_SECRET(AppID:$app_id)"
+        local allow=""
+        printf '    %s1)%s 配对审批(推荐,陌生人来申请你用 hermes pairing approve 放行)\n' "$BD" "$N"
+        printf '    %s2)%s 允许所有人私聊\n' "$BD" "$N"
+        printf '    %s3)%s 只允许指定 OpenID\n' "$BD" "$N"
+        ask allow "选择(回车=1)" "1"
+        case "$allow" in
+            2) env_set QQ_ALLOW_ALL_USERS "true"; env_set QQ_ALLOWED_USERS ""; warn "已放开所有私聊" ;;
+            3) local ids; ask ids "允许的 OpenID(逗号分隔)" "${openid:-}"; env_set QQ_ALLOW_ALL_USERS "false"; env_set QQ_ALLOWED_USERS "$ids" ;;
+            *) env_set QQ_ALLOW_ALL_USERS "false"; env_set QQ_ALLOWED_USERS "${openid:-}"; ok "已启用配对审批" ;;
+        esac
+        if [[ -n "$openid" ]] && confirm "把你自己($openid)设为 home channel(定时任务/通知发这里)?" yes; then
+            env_set QQBOT_HOME_CHANNEL "$openid"; ok "已设置 QQBOT_HOME_CHANNEL"
+        fi
+    elif [[ "$id" == "weixin" ]]; then
+        local account token base user_id
+        account="$(json_get "$out" account_id)"; token="$(json_get "$out" token)"
+        base="$(json_get "$out" base_url)"; user_id="$(json_get "$out" user_id)"
+        if [[ -z "$account" ]]; then warn "返回结果不完整,未写入"; rm -f "$out"; pause; return 1; fi
+        env_set WEIXIN_ACCOUNT_ID "$account"
+        env_set WEIXIN_TOKEN "$token"
+        [[ -n "$base" ]] && env_set WEIXIN_BASE_URL "$base"
+        env_set WEIXIN_CDN_BASE_URL "$(env_get WEIXIN_CDN_BASE_URL "https://novac2c.cdn.weixin.qq.com/c2c")"
+        ok "已写入 WEIXIN_ACCOUNT_ID / WEIXIN_TOKEN(account_id:$account)"
+        local dm=""
+        printf '    %s1)%s 配对审批(推荐)  %s2)%s 允许所有人  %s3)%s 只允许名单  %s4)%s 关闭私聊\n' "$BD" "$N" "$BD" "$N" "$BD" "$N" "$BD" "$N"
+        ask dm "选择(回车=1)" "1"
+        case "$dm" in
+            2) env_set WEIXIN_DM_POLICY "open"; env_set WEIXIN_ALLOW_ALL_USERS "true"; warn "已放开所有私聊" ;;
+            3) local ids; ask ids "允许的用户 ID(逗号分隔)" "${user_id:-}"; env_set WEIXIN_DM_POLICY "allowlist"; env_set WEIXIN_ALLOW_ALL_USERS "false"; env_set WEIXIN_ALLOWED_USERS "$ids" ;;
+            4) env_set WEIXIN_DM_POLICY "disabled"; env_set WEIXIN_ALLOW_ALL_USERS "false"; warn "已关闭私聊" ;;
+            *) env_set WEIXIN_DM_POLICY "pairing"; env_set WEIXIN_ALLOW_ALL_USERS "false"; ok "已启用配对审批" ;;
+        esac
+        env_set WEIXIN_GROUP_POLICY "disabled"
+        if [[ -n "$user_id" ]] && confirm "把你自己($user_id)设为 home channel?" yes; then
+            env_set WEIXIN_HOME_CHANNEL "$user_id"; ok "已设置 WEIXIN_HOME_CHANNEL"
+        fi
+        dim "注意:扫码得到的是 iLink 机器人身份(@im.bot),普通微信群通常拉不进去,私聊稳定可用"
+    else
+        warn "该平台暂不支持脚本内扫码"
+        rm -f "$out"; pause; return 1
+    fi
+
+    rm -f "$out"
     hcfg "platforms.$id.enabled" "true" >/dev/null 2>&1 || true
-    local req v; req="$(plat_req "$id")"; local IFS=','
-    for v in $req; do
-        if [[ -n "$(env_get "$v")" ]]; then ok "$v 已保存"
-        else dim "$v 暂未出现在 .env(部分平台凭据存在 $UHOME 下的账号目录,属正常)"; fi
-    done
-    if confirm "重启网关并查看连接日志?" yes; then
-        restart_service hermes-gateway; sleep 8
-        printf '\n'; dim "网关状态:$(plat_live_state "$id")"; plat_show_log "$id"
+    st_set "PLATFORM_$id" "true"
+    ok "$(plat_name "$id") 已启用"
+    plat_verify_api "$id"
+    if confirm "重启网关让配置生效并查看连接日志?" yes; then
+        restart_service hermes-gateway
+        sleep 8
+        local live; live="$(plat_live_state "$id")"
+        [[ "$live" == "connected" ]] && ok "网关日志:$id 已连接" || warn "网关日志状态:$live"
+        plat_show_log "$id"
     fi
     pause
 }
@@ -939,12 +1103,12 @@ plat_configure() {
 
     if [[ "$mode" == "qr" ]]; then
         printf '\n'
-        printf '    %s1)%s 官方扫码向导(推荐,AppID/Secret 由扫码自动获取)\n' "$BD" "$N"
-        printf '    %s2)%s 手填凭据写入 .env(适合已有 AppID/Secret)\n' "$BD" "$N"
+        printf '    %s1)%s 扫码授权%s(推荐:直接在本脚本里出二维码,扫完自动写好凭据)%s\n' "$BD" "$N" "$DM" "$N"
+        printf '    %s2)%s 手填凭据写入 .env(已有 AppID/Secret 时用)\n' "$BD" "$N"
         printf '    %s0)%s 返回\n' "$BD" "$N"
         local q=""; menu_choice q "请选择"
         case "$q" in
-            1) plat_official_setup "$id"; return 0 ;;
+            1) platform_qr_onboard "$id"; return 0 ;;
             2) : ;;
             *) return 0 ;;
         esac
@@ -1104,6 +1268,8 @@ plat_send_test() {
     dim "若提示需要 home channel:先在平台里给机器人发条消息,或 /sethome;也可指定目标 菜单不提供(用 hermes send -t ${pid}:chat_id)"
     pause
 }
+
+# =============================================================================
 
 # =============================================================================
 #  面板 / API · systemd 服务 · Caddy 反向代理(域名 + 自动 HTTPS)
@@ -2386,7 +2552,6 @@ deploy_all() {
     progress "创建服务用户与目录"
     ensure_user
     hermes_ensure_config
-    write_runners
 
     progress "安装 Hermes Agent"
     hermes_install
