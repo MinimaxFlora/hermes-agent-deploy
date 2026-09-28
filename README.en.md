@@ -80,19 +80,26 @@ Check the current mode with `hermes-vps mode`. The status panel also shows `模�
 ## 🚀 Quick start (60 seconds)
 
 ```bash
-# 1) Log in to your server
+# 1) Log in to your server (root or a regular user — both are supported)
 ssh root@<your-server>
 
-# 2) Install (picks up the latest Release, verifies sha256, installs to /usr/local/bin)
+# 2) Install and run: root → /usr/local/bin; regular user → ~/.local/bin
+#    root
+curl -fsSL https://raw.githubusercontent.com/MinimaxFlora/hermes-agent-deploy/main/install.sh | sudo bash
+sudo hermes-vps                     # open the menu (choose 1 on first run, system-wide)
+
+#    regular user (no root needed; everything under $HOME: data ~/.hermes, services systemd --user)
 curl -fsSL https://raw.githubusercontent.com/MinimaxFlora/hermes-agent-deploy/main/install.sh | bash
+hermes-vps                          # open the menu (user mode)
+```
 
-# 3) Open the menu (choose 1 on first run)
-hermes-vps
+Installer options (with the pipe form pass flags via `bash -s --`; if you saved install.sh locally use `bash install.sh …`):
 
-# Other options
-bash install.sh --check              # show installed vs latest
-bash install.sh --version v1.0.0       # install a specific version
-bash install.sh --to ~/.local/bin    # install somewhere else (non-root)
+```bash
+curl -fsSL https://raw.githubusercontent.com/MinimaxFlora/hermes-agent-deploy/main/install.sh | bash -s -- --check            # show installed vs latest
+curl -fsSL https://raw.githubusercontent.com/MinimaxFlora/hermes-agent-deploy/main/install.sh | bash -s -- --version v1.0.0   # install a specific version
+curl -fsSL https://raw.githubusercontent.com/MinimaxFlora/hermes-agent-deploy/main/install.sh | bash -s -- --user             # force ~/.local/bin
+curl -fsSL https://raw.githubusercontent.com/MinimaxFlora/hermes-agent-deploy/main/install.sh | bash -s -- --system           # force /usr/local/bin (needs root)
 ```
 
 Pick `1` (one-click deploy) the first time: enter a domain (optional), choose a model provider, and the script does the rest. Expect 5–15 minutes depending on the machine and network.

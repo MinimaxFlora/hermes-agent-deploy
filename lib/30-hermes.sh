@@ -64,7 +64,7 @@ hermes_install() {
     local rc=0
     set +e
     run_as_user_env "$HUSER" "HERMES_HOME=$UHOME" "HERMES_REPO_URL=$REPO_URL" "DEBIAN_FRONTEND=noninteractive" \
-        -- bash "$script" "${flags[@]}"
+        -- bash "$script" "${flags[@]}" </dev/null
     rc=$?
     set -e
     rm -f "$script"
@@ -95,7 +95,7 @@ hermes_update() {
     step "更新 Hermes"
     local before; before="$(hermes_version 2>/dev/null || echo unknown)"
     if [[ "${SKIP_BACKUP:-0}" != "1" ]] && confirm "更新前先创建备份?" yes; then backup_create pre-update; fi
-    run_as_user_env "$HUSER" "HERMES_HOME=$UHOME" -- "$HBIN" update || warn "hermes update 返回非零"
+    run_as_user_env "$HUSER" "HERMES_HOME=$UHOME" -- timeout 900 "$HBIN" update </dev/null || warn "hermes update 返回非零/超时"
     restart_all_services
     ok "更新完成:$before → $(hermes_version 2>/dev/null || echo unknown)"
 }

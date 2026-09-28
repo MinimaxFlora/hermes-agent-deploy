@@ -39,7 +39,28 @@ bad()  { printf '  %s✘%s %s\n' "$C_BAD" "$C_N" "$*" >&2; }
 die()  { bad "$*"; exit 1; }
 
 usage() {
-    sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'
+    # 不能用 sed "$0" 取注释:管道安装时 $0 是 bash(不是文件)→ sed: can't read bash,直接失败
+    cat <<'EOF'
+  install.sh —— 从 GitHub Release 安装 / 升级 hermes-vps
+
+  一条命令(root:装到 /usr/local/bin;之后 sudo hermes-vps 打开菜单):
+    curl -fsSL https://raw.githubusercontent.com/MinimaxFlora/hermes-agent-deploy/main/install.sh | sudo bash
+
+  普通用户(装到 ~/.local/bin,不需要 root;工具两种身份都支持):
+    curl -fsSL https://raw.githubusercontent.com/MinimaxFlora/hermes-agent-deploy/main/install.sh | bash
+
+  其它参数(管道形式要用 bash -s -- 传参;已存到本地则直接 bash install.sh …):
+    bash -s -- --check                 只看已装版本与最新版本
+    bash -s -- --version v1.0.0        安装指定版本
+    bash -s -- --user                  装到 ~/.local/bin
+    bash -s -- --system                装到 /usr/local/bin
+    bash -s -- --to ~/bin              安装到自定义目录
+    bash -s -- --dry-run               只解析并下载,不安装
+    bash -s -- --yes                   覆盖安装不再询问
+
+  说明:脚本本体由 GitHub Actions 在打 tag 时构建并上传到 Release,
+        仓库里只有模块化源码(lib/ + bin/),发布产物是自包含单文件。
+EOF
     exit 0
 }
 
@@ -120,18 +141,22 @@ main() {
     info "下载 $url"
     curl -fL --retry 3 --retry-delay 2 --max-time 300 -o "$tmp" "$url" \
         || die "下载失败:$url(该版本可能还没构建完成)"
+    [[ -s "$tmp" ]] || die "下载到的文件为空:$url"
 
-    # 若 Release 附带校验文件,则强制校验
-    if curl -fsSL --max-time 30 -o "${tmp}.sha256" "$sha_url" 2>/dev/null; then
-        local want got
-        want="$(awk '{print $1}' "${tmp}.sha256" | tr -d '\r')"
-        got="$(sha256sum "$tmp" 2>/dev/null | awk '{print $1}' || shasum -a 256 "$tmp" | awk '{print $1}')"
-        if [[ -n "$want" && "$want" != "$got" ]]; then
+    # 校验文件:取得到就校验,取不到/解析失败一律只提示,绝不中断安装
+    # (历史 bug:awk 读不到文件会报致命错并让安装器静默中止)
+    local want="" got=""
+    if curl -fsSL --max-time 30 -o "${tmp}.sha256" "$sha_url" 2>/dev/null && [[ -s "${tmp}.sha256" ]]; then
+        want="$(awk '{print $1}' "${tmp}.sha256" 2>/dev/null | tr -d '\r')" || want=""
+        got="$(sha256sum "$tmp" 2>/dev/null | awk '{print $1}')" || got=""
+        if [[ -z "$got" ]]; then got="$(shasum -a 256 "$tmp" 2>/dev/null | awk '{print $1}')" || got=""; fi
+        if [[ -n "$want" && -n "$got" && "$want" != "$got" ]]; then
             die "校验失败:期望 ${want:0:16}… 实际 ${got:0:16}…(已中止安装)"
         fi
-        ok "sha256 校验通过(${got:0:16}…)"
+        if [[ -n "$want" && -n "$got" ]]; then ok "sha256 校验通过(${got:0:16}…)"
+        else info "校验文件无法解析,跳过校验"; fi
     else
-        info "Release 未提供 .sha256,跳过校验"
+        info "Release 未提供 .sha256(或下载失败),跳过校验"
     fi
 
     bash -n "$tmp" || die "下载到的文件不是合法 bash 脚本"

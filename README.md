@@ -82,19 +82,26 @@ curl -fsSL https://raw.githubusercontent.com/MinimaxFlora/hermes-agent-deploy/ma
 ## 🚀 60 秒开始
 
 ```bash
-# 1) 登录你的服务器
+# 1) 登录服务器(root 或普通用户都行:两种身份都支持)
 ssh root@<你的服务器>
 
-# 2) 安装(自动取最新 Release,校验 sha256 后装到 /usr/local/bin)
+# 2) 安装并运行:root → 装到 /usr/local/bin;普通用户 → 装到 ~/.local/bin
+#    root
+curl -fsSL https://raw.githubusercontent.com/MinimaxFlora/hermes-agent-deploy/main/install.sh | sudo bash
+sudo hermes-vps                     # 打开交互菜单(首次部署选 1,系统级)
+
+#    普通用户(不需要 root;全部落在 $HOME:数据 ~/.hermes、服务 systemd --user)
 curl -fsSL https://raw.githubusercontent.com/MinimaxFlora/hermes-agent-deploy/main/install.sh | bash
+hermes-vps                          # 打开交互菜单(用户态)
+```
 
-# 3) 打开菜单(首次部署选 1)
-hermes-vps
+安装器常用参数(管道形式要用 `bash -s --` 传参;已存到本地则直接 `bash install.sh …`):
 
-# 其它用法
-bash install.sh --check              # 只看已装版本 vs 最新版本
-bash install.sh --version v1.0.0     # 装指定版本
-bash install.sh --to ~/.local/bin    # 非 root 时装到自定义目录
+```bash
+curl -fsSL https://raw.githubusercontent.com/MinimaxFlora/hermes-agent-deploy/main/install.sh | bash -s -- --check            # 只看已装版本 vs 最新版本
+curl -fsSL https://raw.githubusercontent.com/MinimaxFlora/hermes-agent-deploy/main/install.sh | bash -s -- --version v1.0.0   # 装指定版本
+curl -fsSL https://raw.githubusercontent.com/MinimaxFlora/hermes-agent-deploy/main/install.sh | bash -s -- --user             # 明确装到 ~/.local/bin
+curl -fsSL https://raw.githubusercontent.com/MinimaxFlora/hermes-agent-deploy/main/install.sh | bash -s -- --system           # 明确装到 /usr/local/bin(需 root)
 ```
 
 首次进入菜单选 `1` 一键部署 —— 填域名(可留空)、选模型提供商,剩下的它自己干完。

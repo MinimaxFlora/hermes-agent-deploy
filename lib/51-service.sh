@@ -33,12 +33,18 @@ service_gateway_install() {
         if [[ "$u" == "$HUSER" ]]; then ok "网关服务已就绪(开机自启)"; return 0; fi
     fi
     step "安装网关系统服务"
+    # ⚠️ 官方 `gateway install --system` 是交互式命令:输出重定向到 /dev/null 时,它若等待确认
+    #    就会永久卡住(stdin 仍接在 TTY 上) —— 真机 [7/10] 卡死就是这个原因。
+    #    所以:stdin 接 /dev/null(EOF 让它自己退出)+ timeout 兜底;失败就走内置单元。
     local rc=0
     set +e
-    HERMES_HOME="$UHOME" HOME="$HHOME" "$HBIN" gateway install --system >/dev/null 2>&1
+    timeout 60 env HERMES_HOME="$UHOME" HOME="$HHOME" "$HBIN" gateway install --system </dev/null >/dev/null 2>&1
     rc=$?
+    [[ $rc -eq 124 ]] && warn "官方 gateway install --system 超时 60s(可能是交互式确认),改用内置单元"
     if [[ $rc -ne 0 ]]; then
-        run_as_user_env "$HUSER" "HERMES_HOME=$UHOME" -- "$HBIN" gateway install --system >/dev/null 2>&1
+        timeout 60 env -i HOME="$HHOME" HERMES_HOME="$UHOME" \
+            PATH="$HHOME/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
+            su -s /bin/bash "$HUSER" -c "cd '$HHOME' 2>/dev/null || cd /; '$HBIN' gateway install --system" </dev/null >/dev/null 2>&1
         rc=$?
     fi
     set -e

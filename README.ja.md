@@ -82,19 +82,26 @@ curl -fsSL https://raw.githubusercontent.com/MinimaxFlora/hermes-agent-deploy/ma
 ## 🚀 60 秒で開始
 
 ```bash
-# 1) サーバーにログイン
+# 1) サーバーにログイン(root / 一般ユーザーのどちらでも可)
 ssh root@<あなたのサーバー>
 
-# 2) インストール(最新 Release を取得し sha256 検証のうえ /usr/local/bin に入れます)
+# 2) インストールして起動:root → /usr/local/bin、一般ユーザー → ~/.local/bin
+#    root
+curl -fsSL https://raw.githubusercontent.com/MinimaxFlora/hermes-agent-deploy/main/install.sh | sudo bash
+sudo hermes-vps                     # メニューを開く(初回は 1、システムモード)
+
+#    一般ユーザー(root 不要。すべて $HOME 配下:データ ~/.hermes、サービスは systemd --user)
 curl -fsSL https://raw.githubusercontent.com/MinimaxFlora/hermes-agent-deploy/main/install.sh | bash
+hermes-vps                          # メニューを開く(ユーザーモード)
+```
 
-# 3) メニューを開く(初回は 1 を選択)
-hermes-vps
+インストーラの主なオプション(パイプ形式では `bash -s --` で引数を渡します。ローカルに保存済みなら `bash install.sh …`):
 
-# その他
-bash install.sh --check              # 導入済みと最新版の比較
-bash install.sh --version v1.0.0       # バージョン指定
-bash install.sh --to ~/.local/bin    # 非 root なら任意のディレクトリへ
+```bash
+curl -fsSL https://raw.githubusercontent.com/MinimaxFlora/hermes-agent-deploy/main/install.sh | bash -s -- --check            # 導入済みと最新版の比較
+curl -fsSL https://raw.githubusercontent.com/MinimaxFlora/hermes-agent-deploy/main/install.sh | bash -s -- --version v1.0.0   # バージョン指定
+curl -fsSL https://raw.githubusercontent.com/MinimaxFlora/hermes-agent-deploy/main/install.sh | bash -s -- --user             # ~/.local/bin に導入
+curl -fsSL https://raw.githubusercontent.com/MinimaxFlora/hermes-agent-deploy/main/install.sh | bash -s -- --system           # /usr/local/bin に導入(root 必須)
 ```
 
 最初はメニューの `1`(ワンクリック導入)を選択してください。ドメイン(空欄可)とモデルプロバイダーを入力すれば、あとは自動です。所要 5〜15 分(マシンとネットワーク次第)。

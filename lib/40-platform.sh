@@ -201,7 +201,7 @@ PYEOF
     rm -f "$dir/hv_vps_check.py"
     [[ "$out" == *QR_OK* ]] && { st_set QR_DEPS_OK 1; return 0; }
     step "补齐二维码与消息平台依赖(官方:hermes pm install --extra messaging)"
-    if run_as_user_env "$HUSER" "HERMES_HOME=$UHOME" -- "$HBIN" pm install --extra messaging; then
+    if run_as_user_env "$HUSER" "HERMES_HOME=$UHOME" -- timeout 600 "$HBIN" pm install --extra messaging </dev/null; then
         st_set QR_DEPS_OK 1
         ok "依赖已就绪"
     else
