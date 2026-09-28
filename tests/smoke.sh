@@ -138,6 +138,13 @@ for c in "version" "help" "model list" "platform list"; do
     if bash "${ROOT}/bin/hermes-vps" $c >/dev/null 2>&1; then ok "hermes-vps $c"; else bad "hermes-vps $c 失败"; fi
 done
 
+# 通用开关必须真的被入口解析(--debug 会打开 set -x,能观察到)
+if bash "${ROOT}/bin/hermes-vps" mirror show --debug 2>&1 | grep -q '^+'; then
+    ok "入口解析通用开关(--debug 已生效)"
+else
+    bad "入口未解析通用开关(--debug/--yes/--non-interactive 会变成空操作)"
+fi
+
 echo "── 配置文件示例可被 source ──"
 if ( set -u; . "${ROOT}/etc/hermes-vps.conf.example" ) 2>/dev/null; then
     ok "etc/hermes-vps.conf.example 语法正确"

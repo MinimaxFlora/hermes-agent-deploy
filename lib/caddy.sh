@@ -194,8 +194,12 @@ hv_caddy_write_config() {
     hv_require_root
 
     if [[ -f "$HV_CADDYFILE" ]] && ! grep -q "managed-by: hermes-vps" "$HV_CADDYFILE"; then
-        hv_warn "现有 $HV_CADDYFILE 不是本工具生成的"
-        hv_confirm "是否备份它并覆盖为 hermes-vps 生成的配置?" no || return 1
+        hv_warn "现有 $HV_CADDYFILE 不是本工具生成的(通常是发行版自带示例配置)"
+        if [[ "${HV_NONINTERACTIVE:-0}" == "1" || "${HV_ASSUME_YES:-0}" == "1" ]]; then
+            hv_info "非交互/--yes 模式:自动备份原文件后覆盖"
+        else
+            hv_confirm "是否备份它并覆盖为 hermes-vps 生成的配置?" no || return 1
+        fi
         hv_backup_file "$HV_CADDYFILE"
     fi
 

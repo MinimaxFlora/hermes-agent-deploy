@@ -96,12 +96,17 @@ _hv_parse_flags() {
             --no-backup)        HV_SKIP_BACKUP=1; shift ;;
             --label)      HV_BACKUP_LABEL="${2:-auto}"; shift 2 ;;
             --force)      HV_FORCE=1; shift ;;
+            # 通用开关(必须在入口解析,否则 --yes/--non-interactive 会变成空操作)
+            -y|--yes)          HV_ASSUME_YES=1; shift ;;
+            --non-interactive) HV_NONINTERACTIVE=1; shift ;;
+            --debug)           HV_DEBUG=1; shift ;;
+            --no-color)        HV_NO_COLOR=1; shift ;;
             *) shift ;;
         esac
     done
     export HV_DOMAIN HV_ACME_EMAIL HV_ACME_CA HV_MODEL_PROVIDER HV_MODEL_KEY HV_MODEL_NAME
     export HV_MODEL_BASE_URL HV_PLATFORMS HV_WITH_API HV_SKIP_BROWSER HV_SKIP_FIREWALL HV_SKIP_CADDY
-    export HV_FORCE
+    export HV_FORCE HV_ASSUME_YES HV_NONINTERACTIVE HV_DEBUG HV_NO_COLOR
 }
 
 _hv_load_all() {
