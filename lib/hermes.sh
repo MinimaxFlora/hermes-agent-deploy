@@ -38,10 +38,8 @@ hv_hermes_install() {
         if [[ -d "${HV_UHOME}/hermes-agent/hermes_cli/web_dist" ]]; then
             if [[ "${HV_FORCE:-0}" == "1" ]]; then
                 hv_info "按 --force 重新执行官方安装脚本"
-            elif hv_confirm "重新跑一次官方安装脚本?(默认跳过:已安装且产物完整)" no; then
-                :
             else
-                hv_info "跳过重复安装(需要强制重装时:hermes-vps install --force)"
+                hv_info "已安装且产物完整,跳过重复安装(需要修复/强制重装:--force)"
                 return 0
             fi
         else
