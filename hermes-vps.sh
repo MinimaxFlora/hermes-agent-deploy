@@ -831,24 +831,35 @@ plat_configured() { # 必需 env 是否齐
 plat_enabled() { [[ "$(hcfg_get "platforms.$1.enabled")" == *true* ]]; }
 
 # 网关日志里的平台连接状态
+# 关键:连接结论写在 Hermes 自己的 $UHOME/logs/gateway.log 里,journald 只有零星告警;
+# 且必须只看"本次启动之后"的日志,否则会被上一次运行的失败记录误导。
+gw_current_run_log() {
+    local log="$UHOME/logs/gateway.log"
+    [[ -f "$log" ]] || return 1
+    local start
+    # 用"启动"标记(它一定在平台连接之前);不能用 "Gateway running with"(那是连完之后才写的)
+    start="$(grep -n "Starting Hermes Gateway" "$log" 2>/dev/null | tail -n1 | cut -d: -f1)" || start=""
+    [[ -z "$start" ]] && start="$(grep -n "Connecting to " "$log" 2>/dev/null | tail -n1 | cut -d: -f1)" || true
+    if [[ -n "$start" ]]; then tail -n "+$start" "$log"; else tail -n 300 "$log"; fi
+}
+
 plat_live_state() {
-    local id="$1" log last
+    local id="$1" body="" verdict=""
     # api_server 直接看端口,别猜日志
     if [[ "$id" == "api_server" ]]; then
         if port_listening "$API_PORT"; then printf 'connected'; else printf 'failed'; fi
         return 0
     fi
-    have journalctl || { printf 'unknown'; return 0; }
-    log="$(journalctl -u hermes-gateway --since '-2 hours' --no-pager 2>/dev/null \
-            | grep -iE "(^|[^a-z])${id}([^a-z]|$)" \
-            | grep -viE "rejected invalid api key|peer_ip=" | tail -n 8)" || log=""
-    [[ -z "$log" ]] && { printf 'unknown'; return 0; }
-    last="$(printf '%s\n' "$log" | tail -n 1)"
-    if printf '%s' "$last" | grep -qiE "startup failed|failed to (start|connect|login)|connection failed|invalid|rejected|unauthorized|error"; then
-        printf 'failed'; return 0
-    fi
-    if printf '%s' "$last" | grep -qiE "connected|ready|started|logged in|polling|listening"; then
+    body="$(gw_current_run_log)" || { printf 'unknown'; return 0; }
+    [[ -z "$body" ]] && { printf 'unknown'; return 0; }
+    verdict="$(printf '%s
+' "$body" | grep -iE "(^|[^a-zA-Z])${id}([^a-zA-Z]|$)"                 | grep -iE "connected|failed to connect|startup failed|✓|✗" | tail -n1)" || verdict=""
+    [[ -z "$verdict" ]] && { printf 'unknown'; return 0; }
+    if printf '%s' "$verdict" | grep -qiE "✓|connected" && ! printf '%s' "$verdict" | grep -qiE "failed|✗"; then
         printf 'connected'; return 0
+    fi
+    if printf '%s' "$verdict" | grep -qiE "failed|✗|error|invalid"; then
+        printf 'failed'; return 0
     fi
     printf 'seen'
     return 0
@@ -861,7 +872,8 @@ plat_live_state() {
 # ---------------------------------------------------------------------------
 hermes_run_module() { # hermes_run_module <模块名> [参数…]
     local name="$1"; shift
-    run_as_user_env "$HUSER" "HERMES_HOME=$UHOME" -- "$HBIN" --run-module "$name" "$@"
+    # PYTHONUNBUFFERED:非 TTY 时二维码/链接要立刻可见,不能被块缓冲吞掉
+    run_as_user_env "$HUSER" "HERMES_HOME=$UHOME" "PYTHONUNBUFFERED=1" "PYTHONIOENCODING=utf-8"         -- "$HBIN" --run-module "$name" "$@"
 }
 _qr_module_write() {
     local dir="$UHOME/hermes-agent" f
@@ -923,6 +935,13 @@ def run_weixin(out_path, timeout, hermes_home):
 
 
 def main():
+    # 打开行缓冲:二维码/链接必须立刻可见(官方扫码函数内部 print 不主动 flush,
+    # 非 TTY 时会被块缓冲吞掉,导致日志里看不到链接)
+    for _stream in (sys.stdout, sys.stderr):
+        try:
+            _stream.reconfigure(line_buffering=True)
+        except Exception:
+            pass
     if len(sys.argv) < 3:
         print("用法: hv_vps_onboard <qq|weixin> <结果文件> [超时秒]")
         return 2
@@ -1009,7 +1028,7 @@ platform_qr_onboard() {
         warn "扫码流程未完成(退出码 $rc);可重试或改用手填凭据"
         rm -f "$out"
         pause
-        return 1
+        return 0
     fi
 
     local v
@@ -1019,7 +1038,7 @@ platform_qr_onboard() {
         if [[ -z "$app_id" || -z "$secret" ]]; then
             warn "返回结果不完整,未写入"
             dim "若上面打印了 app_id / client_secret,可在本菜单选 2) 手填凭据写入"
-            rm -f "$out"; pause; return 1
+            rm -f "$out"; pause; return 0
         fi
         env_set QQ_APP_ID "$app_id"
         env_set QQ_CLIENT_SECRET "$secret"
@@ -1044,7 +1063,7 @@ platform_qr_onboard() {
         if [[ -z "$account" ]]; then
             warn "返回结果不完整,未写入"
             dim "若上面打印了 account_id / token,可在本菜单选 2) 手填凭据写入"
-            rm -f "$out"; pause; return 1
+            rm -f "$out"; pause; return 0
         fi
         env_set WEIXIN_ACCOUNT_ID "$account"
         env_set WEIXIN_TOKEN "$token"
@@ -1067,7 +1086,7 @@ platform_qr_onboard() {
         dim "注意:扫码得到的是 iLink 机器人身份(@im.bot),普通微信群通常拉不进去,私聊稳定可用"
     else
         warn "该平台暂不支持脚本内扫码"
-        rm -f "$out"; pause; return 1
+        rm -f "$out"; pause; return 0
     fi
 
     rm -f "$out"
@@ -1264,13 +1283,22 @@ plat_verify_api() {
 }
 
 plat_show_log() {
-    local id="$1" tail_n="${2:-12}"
-    have journalctl || return 0
-    local l; l="$(journalctl -u hermes-gateway --since '-10 min' --no-pager 2>/dev/null | grep -iE "$id" | tail -n "$tail_n")" || l=""
-    if [[ -n "$l" ]]; then
-        printf '\n    %s网关日志(%s)%s\n' "$DM" "$id" "$N"
-        printf '%s\n' "$l" | sed 's/^/      /' | cut -c1-200
+    local id="$1" tail_n="${2:-12}" body="" lines=""
+    body="$(gw_current_run_log)" || body=""
+    if [[ -z "$body" ]]; then
+        have journalctl && lines="$(journalctl -u hermes-gateway --since '-30 min' --no-pager 2>/dev/null | grep -iE "$id" | tail -n "$tail_n")" || lines=""
+    else
+        lines="$(printf '%s
+' "$body" | grep -iE "$id" | tail -n "$tail_n")" || lines=""
     fi
+    if [[ -n "$lines" ]]; then
+        printf '
+    %s网关日志(%s,本次启动以来)%s
+' "$DM" "$id" "$N"
+        printf '%s
+' "$lines" | sed -E 's/^[0-9-]+ [0-9:,]+ //' | sed 's/^/      /' | cut -c1-190
+    fi
+    return 0
 }
 
 plat_send_test() {
@@ -1576,6 +1604,11 @@ service_brief() {
 }
 service_logs() {
     local s; s="$(svc "$1")"
+    if [[ "$s" == "hermes-gateway" && -f "$UHOME/logs/gateway.log" ]]; then
+        dim "按 Ctrl+C 退出日志(网关:$UHOME/logs/gateway.log,平台连接结论在这里)"
+        set +e; tail -n 60 -f "$UHOME/logs/gateway.log"; set -e
+        return 0
+    fi
     dim "按 Ctrl+C 退出日志(${s})"
     set +e; journalctl -u "$s" -n 60 --no-pager; journalctl -u "$s" -f; set -e
 }
@@ -2115,7 +2148,7 @@ diagnose() {
         live="$(plat_live_state "$id" 2>/dev/null || echo unknown)"
         case "$live" in
             connected) diag_add ok "$nm:已连接" ;;
-            failed) diag_add fail "$nm:连接失败(看 journalctl -u hermes-gateway)" ;;
+            failed) diag_add fail "$nm:连接失败(看 $UHOME/logs/gateway.log)" ;;
             seen) diag_add warn "$nm:已配置,日志暂无明确结论" ;;
             *) diag_add warn "$nm:已配置,未观测到连接记录" ;;
         esac
