@@ -25,6 +25,19 @@ hv_service_gateway_install() {
     hv_hermes_installed || hv_die "Hermes 未安装"
     hv_has_systemd || { hv_warn "无 systemd,跳过网关服务安装"; return 1; }
 
+    # 已是系统级服务、运行用户正确、已开机自启 → 无需重装(减少每次部署的噪音与耗时)
+    if systemctl cat "$HV_GW_UNIT" >/dev/null 2>&1; then
+        local cur_user cur_en
+        cur_user="$(systemctl show -p User --value "$HV_GW_UNIT" 2>/dev/null | tr -d '\r')"
+        cur_en="$(systemctl is-enabled "$HV_GW_UNIT" 2>/dev/null || true)"
+        if [[ "$cur_user" == "$HV_USER" && "$cur_en" == "enabled" ]]; then
+            hv_ok "网关服务已就绪($HV_GW_UNIT,用户 $cur_user,开机自启)"
+            systemctl is-active --quiet "$HV_GW_UNIT" || { systemctl restart "$HV_GW_UNIT" >/dev/null 2>&1 || true; }
+            hv_service_status "$HV_GW_UNIT"
+            return 0
+        fi
+    fi
+
     hv_step "安装网关服务(hermes gateway install --system)"
     local rc=0 u=""
 
@@ -100,6 +113,14 @@ hv_service_dashboard_install() {
     hv_step "安装面板服务($HV_DASH_UNIT,127.0.0.1:${HV_DASH_PORT})"
     hv_write_dashboard_runner
 
+    # 单元已存在且指向同一个 runner 就不用重写(内容没变),避免无谓重启
+    local unit_path="/etc/systemd/system/${HV_DASH_UNIT}"
+    local need_write=1
+    if [[ -f "$unit_path" ]] && grep -q "${HV_UHOME}/bin/hermes-dashboard-run" "$unit_path"; then
+        need_write=0
+        hv_info "面板服务单元已是当前版本,跳过重写"
+    fi
+
     # 面板必须绑回环 + 配 dashboard.public_url;鉴权门由 basic auth 提供
     local pub; pub="$(hv_state_get DASHBOARD_PUBLIC_URL "")"
     if [[ -z "$pub" ]]; then
@@ -109,7 +130,8 @@ hv_service_dashboard_install() {
         hv_warn "未配置面板密码:绑定非回环地址时 Hermes 会拒绝启动(fail-closed)"
     fi
 
-    cat >"/etc/systemd/system/${HV_DASH_UNIT}" <<EOF
+    if [[ "$need_write" == "1" ]]; then
+        cat >"$unit_path" <<EOF
 [Unit]
 Description=Hermes Agent Web Dashboard (managed by hermes-vps)
 After=network-online.target
@@ -134,8 +156,9 @@ PrivateTmp=true
 [Install]
 WantedBy=multi-user.target
 EOF
+        hv_systemd_reload
+    fi
 
-    hv_systemd_reload
     systemctl enable "$HV_DASH_UNIT" >/dev/null 2>&1 || true
     systemctl restart "$HV_DASH_UNIT" >/dev/null 2>&1 || true
     hv_ok "面板服务已安装:$HV_DASH_UNIT"
