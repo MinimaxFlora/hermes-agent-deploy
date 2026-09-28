@@ -85,7 +85,7 @@ rc=$?
 set -e
 [[ "$rc" == "7" ]] && ok "set +e 容错路径可继续执行,rc 保留真实退出码" || bad "rc=$rc,期望 7"
 # 2) 致命路径:set -e 下的失败必须中止(子 shell 里验证,避免影响本测试)
-if ( bash -c 'source "$1/lib/common.sh"; hv_install_trap; false; echo "不该执行到这里"' _ "$ROOT" >/dev/null 2>&1 ); then
+if ( bash -c 'set -Eeuo pipefail; source "$1/lib/common.sh"; hv_install_trap; false; echo "不该执行到这里"' _ "$ROOT" >/dev/null 2>&1 ); then
     bad "set -e 下的失败没有中止脚本(错误陷阱失效)"
 else
     ok "set -e 下的失败会中止脚本(错误陷阱生效)"
