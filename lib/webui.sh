@@ -72,14 +72,26 @@ hv_dashboard_restart_if_installed() {
         return 0
     }
     hv_info "已重启面板服务使新配置生效"
-    sleep 2
+    hv_dashboard_wait_ready
     hv_dashboard_check_gate
+}
+
+# 等面板真正开始监听(启动要几秒;固定 sleep 会误报"未监听")
+hv_dashboard_wait_ready() {
+    local i=0 limit="${1:-40}"
+    while [[ $i -lt $limit ]]; do
+        hv_port_in_use "$HV_DASH_PORT" && return 0
+        sleep 1; i=$((i+1))
+    done
+    return 1
 }
 
 # 校验运行中的面板确实开了认证门(防止"配了但没生效")
 hv_dashboard_check_gate() {
     hv_have curl || return 0
-    hv_port_in_use "$HV_DASH_PORT" || { hv_warn "面板端口 ${HV_DASH_PORT} 未监听"; return 0; }
+    if ! hv_port_in_use "$HV_DASH_PORT"; then
+        hv_dashboard_wait_ready 40 || { hv_warn "面板端口 ${HV_DASH_PORT} 40 秒内仍未监听(systemctl status hermes-dashboard)"; return 0; }
+    fi
     local body; body="$(curl -sS -m 5 "http://127.0.0.1:${HV_DASH_PORT}/api/status" 2>/dev/null | tr -d ' \n')"
     if [[ -z "$body" ]]; then
         hv_warn "无法读取 /api/status,跳过认证门校验"
