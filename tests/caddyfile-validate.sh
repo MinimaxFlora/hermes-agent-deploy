@@ -62,6 +62,7 @@ done
 
 # 校验失败必须拒绝写入
 before="$(md5sum "$HV_CADDYFILE" | awk '{print $1}')"
+rm -f "$SANDBOX/bin/caddy"   # 先摘掉指向真实 caddy 的软链,否则写同名文件会 "Text file busy"
 cat >"$SANDBOX/bin/caddy" <<'EOS'
 #!/usr/bin/env bash
 case "${1:-}" in
