@@ -251,21 +251,31 @@ cert_expire_date() {
 
 # 用户态部署的 root 侧助手:只装/写/校验/重载 Caddy,不碰任何状态文件
 # (由普通用户的域名流程通过 sudo 调用;端口由用户侧按本实例传入)
-domain_root_configure() {
-    # 非 root 直接调用是常见误用(它本来就是给 sudo 用的):只提示,不触发 ERR 陷阱打断脚本
-    is_root || { err "domain-root 必须由 root 执行(它是用户态部署的 root 侧助手,由 sudo 调用)"; return 0; }
-    local domain="${1:-}"; shift || true
-    local port="$DASH_PORT" apiport="$API_PORT" email="" api_on="${API_ENABLED:-0}"
+# 解析 domain-root 的参数(独立函数以便单测:真机踩过"多 shift 一次"导致域名位置拿到 --port)
+domain_root_parse() { # domain_root_parse <域名> [--port N] [--api-port N] [--email X] [--api 0|1]
+    DR_DOMAIN="${1:-}"; shift || true
+    DR_PORT="$DASH_PORT"; DR_APIPORT="$API_PORT"; DR_EMAIL=""; DR_API="${API_ENABLED:-0}"
     while [[ $# -gt 0 ]]; do
         case "$1" in
-            --port)     port="${2:-}"; shift 2 || true ;;
-            --api-port) apiport="${2:-}"; shift 2 || true ;;
-            --email)    email="${2:-}"; shift 2 || true ;;
-            --api)      api_on="${2:-0}"; shift 2 || true ;;
+            --port)     DR_PORT="${2:-}";    shift 2 || true ;;
+            --api-port) DR_APIPORT="${2:-}"; shift 2 || true ;;
+            --email)    DR_EMAIL="${2:-}";   shift 2 || true ;;
+            --api)      DR_API="${2:-0}";    shift 2 || true ;;
             *)          shift || true ;;
         esac
     done
-    [[ -n "$domain" ]] || { err "缺少域名"; return 1; }
+    return 0
+}
+
+domain_root_configure() {
+    # 非 root 直接调用是常见误用(它本来就是给 sudo 用的):只提示,不触发 ERR 陷阱打断脚本
+    is_root || { err "domain-root 必须由 root 执行(它是用户态部署的 root 侧助手,由 sudo 调用)"; return 0; }
+    local DR_DOMAIN DR_PORT DR_APIPORT DR_EMAIL DR_API
+    domain_root_parse "$@"
+    local domain="$DR_DOMAIN" port="$DR_PORT" apiport="$DR_APIPORT" email="$DR_EMAIL" api_on="$DR_API"
+    [[ -n "$domain" ]] || { err "缺少域名"; return 0; }
+    # 以 "-" 开头说明调用方参数错位(真机:CLI 多 shift 一次,域名位置成了 --port)
+    [[ "$domain" == -* ]] && { err "域名参数错位(拿到的是选项:$domain),请检查调用方式"; return 0; }
     [[ "$port" =~ ^[0-9]+$ && "$apiport" =~ ^[0-9]+$ ]] || { err "端口参数非法:$port / $apiport"; return 1; }
     header "域名与反向代理(root 侧 → 127.0.0.1:$port)"
     caddy_install || return 1

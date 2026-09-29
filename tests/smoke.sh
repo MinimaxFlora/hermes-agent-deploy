@@ -110,6 +110,16 @@ else
     printf '%s\n' "$st_out" | sed 's/^/      /'
 fi
 
+# domain-root 参数解析:真机踩过 CLI 多 shift 一次 → 域名位置拿到 --port → Caddyfile 站点地址错
+domain_root_parse panel.example.com --port 9120 --api-port 8643 --email a@b.c --api 1
+assert_eq "panel.example.com" "$DR_DOMAIN" "domain-root:域名解析正确"
+assert_eq "9120" "$DR_PORT" "domain-root:--port 解析"
+assert_eq "8643" "$DR_APIPORT" "domain-root:--api-port 解析"
+assert_eq "a@b.c" "$DR_EMAIL" "domain-root:--email 解析"
+assert_eq "1" "$DR_API" "domain-root:--api 解析"
+domain_root_parse panel.example.com
+assert_eq "9119" "$DR_PORT" "domain-root:未给端口时用本实例默认端口"
+
 # root 侧助手:非 root 调用只提示、不崩(它本来就是给 sudo 用的)
 dr_out="$(bash "$DIST" domain-root panel.example.com 2>&1)" || true
 assert_contains "$dr_out" "root 侧助手" "domain-root 子命令存在,非 root 时给出提示而非报错崩掉"

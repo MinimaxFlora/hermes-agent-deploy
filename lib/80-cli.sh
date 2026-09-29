@@ -102,7 +102,8 @@ main() {
             esac ;;
         domain) domain_configure "${1:-}" ;;
         domain-root) # root 侧助手:用户态部署时由 sudo 调用(只写 Caddy,不碰状态)
-            shift || true
+            # 注意:此处不能 shift —— 命令本身在进入 case 前已经 shift 过,
+            # 再 shift 一次会把域名参数丢掉(真机:Caddyfile 站点地址变成 --port,证书签不出来)
             domain_root_configure "$@" ;;
         panel) panel_menu ;;
         service)
