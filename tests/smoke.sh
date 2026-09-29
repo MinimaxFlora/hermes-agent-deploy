@@ -130,6 +130,31 @@ printf '%s' "999999" >"$_dpf"
 assert_eq "inactive" "$(HV_MODE=user svc_state hermes-dashboard)" "pidfile 指向死进程 → inactive"
 rm -f "$_dpf"
 
+# 官方网关 status 输出解析 + 用户态日志提示(真机:journalctl --user 回 No entries 把人带沟里)
+assert_eq "41890" "$(printf '  ✓ Gateway is running (PID: 41890)
+    (Running manually, not as a system service)
+' | gw_pid_from_status)" "解析官方网关 PID"
+assert_eq "" "$(printf '  ✗ Gateway is not running
+' | gw_pid_from_status)" "未运行时解析为空"
+_hint="$(HV_MODE=user svc_log_hint hermes-gateway)"
+assert_contains "$_hint" "logs/gateway.log" "用户态网关日志提示指向真实日志文件"
+assert_not_contains "$_hint" "journalctl" "用户态不再提示 journalctl(那里没有内容)"
+
+# 官方网关 PID 解析(全机单例,权威来源是官方 status 输出)
+_stub="$(mktemp)"
+printf '%s
+' '#!/bin/sh' 'printf "Gateway is running (PID: 12345)
+"' >"$_stub"
+chmod +x "$_stub"
+assert_eq "12345" "$(HBIN="$_stub" UHOME=/tmp usermode_gateway_pid)" "解析官方 gateway status 的 PID"
+printf '%s
+' '#!/bin/sh' 'printf "Gateway is not running
+"' >"$_stub"
+chmod +x "$_stub"
+assert_eq "" "$(HBIN="$_stub" UHOME=/tmp usermode_gateway_pid)" "官方说未运行时不出 PID"
+rm -f "$_stub"
+
+
 # 其他用户实例探测(root 模式下提醒"别又装一套")
 _tu="$(mktemp -d)"; mkdir -p "$_tu/alice/.config/hermes-vps" "$_tu/bob/.config"; : >"$_tu/alice/.config/hermes-vps/state.env"
 assert_eq "alice" "$(HV_HOME_ROOT="$_tu" other_user_instances_users)" "探测其他用户的用户态实例"

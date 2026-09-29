@@ -159,12 +159,62 @@ svc_unit_path() {
     else printf '%s/.config/systemd/user/%s.service' "$USER_HOME" "$1"; fi
 }
 
+# ---------------------------------------------------------------- 官方网关(主机级单例)
+# 官方网关是"每主机一个实例":`hermes gateway run` 见到已有实例会直接拒绝
+#   "The host gateway already serves profile 'default' — nothing to start."
+# 因此用户态的网关必须走官方自己的 restart/stop(它会接管旧实例并起新实例),
+# 我们自己的 pidfile 只是缓存 —— 官方进程换了它不会知道(真机踩过)。
+gw_pid_from_status() { # 从 stdin 的 `hermes gateway status` 输出里取 PID
+    sed -n 's/.*PID: *\([0-9][0-9]*\).*/\1/p' | head -1 || true
+    return 0
+}
+hermes_gw_bin() { # 官方 hermes 可执行(优先用已探测到的 $HBIN)
+    local b="${HBIN:-}"
+    if [[ -n "$b" && -x "$b" ]]; then printf '%s' "$b"; return 0; fi
+    b="$USER_HOME/.local/bin/hermes"
+    if [[ -x "$b" ]]; then printf '%s' "$b"; return 0; fi
+    return 1
+}
+official_gateway_pid() { # 官方认为的网关 PID(没跑则空)
+    local hbin; hbin="$(hermes_gw_bin)" || { printf ''; return 0; }
+    HERMES_HOME="$UHOME" "$hbin" gateway status 2>/dev/null | gw_pid_from_status || true
+    return 0
+}
+usermode_gateway_ctl() { # 网关的用户态生命周期(走官方),成功返回 0
+    local action="$1" hbin pid pf
+    hbin="$(hermes_gw_bin)" || return 1
+    pf="$(pidfile_for hermes-gateway)"
+    case "$action" in
+        stop)           HERMES_HOME="$UHOME" "$hbin" gateway stop    >/dev/null 2>&1 || true ;;
+        restart|reload) HERMES_HOME="$UHOME" "$hbin" gateway restart >/dev/null 2>&1 || true ;;
+        start)          : ;;
+    esac
+    for _ in 1 2 3 4 5 6 7 8; do
+        pid="$(official_gateway_pid)"
+        [[ -n "$pid" ]] && break
+        sleep 1
+    done
+    if [[ -n "$pid" ]]; then printf '%s' "$pid" >"$pf"; return 0; fi
+    [[ "$action" == "stop" ]] && { rm -f "$pf"; return 0; }
+    return 1
+}
+
 svc_state() { # active / failed / inactive / unknown
     local s="$1"
     if [[ "$HV_MODE" == "system" ]]; then systemctl is-active "$s" 2>/dev/null || echo unknown; return 0; fi
     # 用户态:我们自己的托管方式是"后台进程 + pidfile",必须先看它 ——
     # 只看 systemctl --user 会在"机器上有用户级 systemd、但我们的单元没装"时报 inactive,
     # 而服务与端口其实都正常(真机踩过:菜单显示 inactive,用户以为服务挂了)
+    if [[ "$s" == "hermes-gateway" ]]; then
+        # 网关是主机级单例:真实状态以官方 status 为准(我们的 pidfile 会过期 —— 用了官方
+        # restart 时进程换了 pid,pidfile 还指着旧的,菜单就会显示 inactive)
+        local gpid; gpid="$(official_gateway_pid)"
+        if [[ -n "$gpid" ]]; then
+            local gpf; gpf="$(pidfile_for "$s")"
+            [[ "$(cat "$gpf" 2>/dev/null)" == "$gpid" ]] || printf '%s' "$gpid" >"$gpf" 2>/dev/null || true
+            printf 'active'; return 0
+        fi
+    fi
     local pf; pf="$(pidfile_for "$s")"
     if [[ -f "$pf" ]]; then
         if kill -0 "$(cat "$pf" 2>/dev/null)" 2>/dev/null; then printf 'active'; else printf 'inactive'; fi
@@ -187,7 +237,20 @@ svc_enabled() {
 svc_ctl() { # svc_ctl start|stop|restart|reload <svc>
     local action="$1" s="$2"
     if [[ "$HV_MODE" == "system" ]]; then systemctl "$action" "$s" >/dev/null 2>&1; return $?; fi
-    if user_systemd_ok; then systemctl --user "$action" "$s" >/dev/null 2>&1; return $?; fi
+    # 用户级 systemd 可用 ≠ 我们的单元存在:盲目 systemctl --user restart <不存在的单元>
+    # 只会失败(真机:网关/面板"重启失败",而服务其实是我们自己的后台进程)
+    if user_systemd_ok && systemctl --user cat "$s" >/dev/null 2>&1; then
+        systemctl --user "$action" "$s" >/dev/null 2>&1; return $?
+    fi
+    # 网关:官方是"每主机一个实例",run 见到已有实例会拒绝启动 → 必须走官方 restart/stop
+    if [[ "$s" == "hermes-gateway" ]]; then
+        case "$action" in
+            restart|reload|stop)
+                if usermode_gateway_ctl "$action"; then return 0; fi ;;
+            start)
+                if usermode_gateway_ctl start; then return 0; fi ;;
+        esac
+    fi
     case "$action" in
         # 注意:restart 必须是 stop + start —— 只调 start 时,若 pid 还活着会直接返回,
         # 于是"重启"变成空操作(真机踩过:改了配置重启面板却不生效,面板还拿着旧配置)
@@ -199,6 +262,15 @@ svc_ctl() { # svc_ctl start|stop|restart|reload <svc>
 }
 
 # 用户态后台进程模式:本工具自己写 PID 与日志
+usermode_gateway_pid() { # 官方网关的全机单例 PID —— 权威来源是官方自己的 status(真机教训)
+    local out p
+    [[ -x "$HBIN" ]] || return 1
+    out="$(HERMES_HOME="$UHOME" timeout 20 "$HBIN" gateway status 2>/dev/null)" || out=""
+    p="$(printf '%s' "$out" | sed -n 's/.*PID: *\([0-9][0-9]*\).*/\1/p' | head -1)"
+    [[ -n "$p" ]] && printf '%s' "$p"
+    return 0
+}
+
 usermode_bg_cmd() {
     case "$1" in
         hermes-gateway)   printf '%s gateway run' "$HBIN" ;;
@@ -212,6 +284,19 @@ usermode_bg_start() {
     mkdir -p "$(run_dir)" "$TOOL_LOG_DIR" 2>/dev/null || true
     pf="$(pidfile_for "$s")"; log="$TOOL_LOG_DIR/${s}.log"
     if [[ -f "$pf" ]] && kill -0 "$(cat "$pf" 2>/dev/null)" 2>/dev/null; then return 0; fi
+    # 官方网关是全机单例(自带 registry):已在跑就接管它的 PID,绝不重复启动 ——
+    # 否则官方回 "already serves profile … nothing to start" 然后退出,我们把自己的
+    # "进程已退出" 当成启动失败(真机:网关明明在跑,菜单却报重启失败并显示 inactive)
+    if [[ "$s" == "hermes-gateway" ]]; then
+        local opid; opid="$(usermode_gateway_pid || true)"
+        if [[ -n "$opid" ]] && kill -0 "$opid" 2>/dev/null; then
+            printf '%s' "$opid" >"$pf"
+            ok "网关已在运行(已接管官方实例 PID $opid)"
+            return 0
+        fi
+        # registry 里可能留着已死进程的记录,让官方自己清一遍再启
+        timeout 30 env HOME="$USER_HOME" HERMES_HOME="$UHOME" "$HBIN" gateway stop >/dev/null 2>&1 || true
+    fi
     cmd="$(usermode_bg_cmd "$s")" || return 1
     [[ -x "${cmd%% *}" ]] || { warn "找不到可执行文件:${cmd%% *}"; return 1; }
     # 用 nohup + $! 直接记录真实进程 pid(用 setsid 时 $! 可能只是包装进程 → 之后 stop 杀不到)
@@ -219,15 +304,30 @@ usermode_bg_start() {
     echo $! >"$pf"
     disown 2>/dev/null || true
     sleep 2
+    if [[ "$s" == "hermes-gateway" ]]; then
+        local opid2; opid2="$(usermode_gateway_pid || true)"
+        if [[ -n "$opid2" ]] && kill -0 "$opid2" 2>/dev/null; then printf '%s' "$opid2" >"$pf"; return 0; fi
+    fi
     if [[ -f "$pf" ]] && kill -0 "$(cat "$pf" 2>/dev/null)" 2>/dev/null; then return 0; else return 1; fi
 }
 port_owner_pid() { # 谁在监听该端口(需要能看自己的进程)
     command -v ss >/dev/null 2>&1 || return 1
-    ss -lntp 2>/dev/null | grep -F ":$1 " | sed -n 's/.*pid=\([0-9]*\).*//p' | head -1
+    ss -lntp 2>/dev/null | grep -F ":$1 " | sed -n 's/.*pid=\([0-9]*\).*/\1/p' | head -1
 }
 usermode_bg_stop() {
     local s="$1" pf pid i
     pf="$(pidfile_for "$s")"
+    # 网关:先走官方 stop(它会把自己的 registry 清干净,否则下次启动会被拒),
+    # 再拿官方 PID 兜底 —— 只杀我们自己记录的 pid 会漏掉"手工/被接管"的那种实例
+    if [[ "$s" == "hermes-gateway" ]]; then
+        local opid; opid="$(usermode_gateway_pid || true)"
+        timeout 30 env HOME="$USER_HOME" HERMES_HOME="$UHOME" "$HBIN" gateway stop >/dev/null 2>&1 || true
+        if [[ -n "$opid" ]] && kill -0 "$opid" 2>/dev/null; then
+            kill "$opid" 2>/dev/null || true
+            for i in 1 2 3 4 5; do kill -0 "$opid" 2>/dev/null || break; sleep 1; done
+            kill -0 "$opid" 2>/dev/null && kill -9 "$opid" 2>/dev/null || true
+        fi
+    fi
     pid="$(cat "$pf" 2>/dev/null)" || pid=""
     if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
         kill "$pid" 2>/dev/null || true
@@ -317,9 +417,14 @@ restart_all_services() {
 }
 svc_log_hint() {
     local s="$1"
-    if [[ "$HV_MODE" == "system" ]]; then printf 'journalctl -u %s -n 50' "$s"
-    elif user_systemd_ok; then printf 'journalctl --user -u %s -n 50' "$s"
-    else printf '%s/%s.log' "$TOOL_LOG_DIR" "$s"; fi
+    if [[ "$HV_MODE" == "system" ]]; then printf 'journalctl -u %s -n 50' "$s"; return 0; fi
+    if user_systemd_ok && systemctl --user cat "$s" >/dev/null 2>&1; then
+        printf 'journalctl --user -u %s -n 50' "$s"; return 0
+    fi
+    # 用户态不是 systemd 单元:journalctl 只会回 "No entries"(真机把用户带沟里了)。
+    # 网关的真实日志在 HERMES_HOME/logs/gateway.log
+    if [[ "$s" == "hermes-gateway" ]]; then printf 'tail -60 %s/logs/gateway.log' "$UHOME"; return 0; fi
+    printf 'tail -60 %s/%s.log' "$TOOL_LOG_DIR" "$s"
 }
 service_brief() {
     local out="" s
