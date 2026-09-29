@@ -29,7 +29,14 @@ deploy_all() {
     # 域名 / 模型 / 平台:先收集意图,再一口气跑
     local domain email want_model=1 want_platform=0
     domain="$(st_get DOMAIN)"
-    ask domain "域名(用于公网访问,留空=只在本机访问)" "$domain"
+    ask domain "域名(用于公网访问,建议必填)" "$domain"
+    if [[ -z "$domain" ]]; then
+        warn "未填写域名 → 面板与 API 都不会对外开放(只有服务器本机能访问回环端口)"
+        dim "正确用法:先把域名 A 记录解析到本机公网 IP,再在这里填域名(菜单 4 也可随时补配)"
+        if ! confirm "确定不配置域名(面板不对外开放)?" no; then
+            ask domain "请填写域名" ""
+        fi
+    fi
     if [[ -n "$domain" ]]; then ask email "证书通知邮箱(可留空)" "$(st_get ACME_EMAIL)"; fi
     if [[ "$(st_get MODEL_PROVIDER)" == "" ]]; then
         confirm "现在配置模型提供商(填 API Key,自动验证)?" yes && want_model=1 || want_model=0
@@ -72,7 +79,7 @@ deploy_all() {
     fi
     service_gateway_install
     service_dashboard_install
-    if dashboard_wait_ready; then ok "面板已就绪(127.0.0.1:${DASH_PORT})"; else warn "面板未在 60 秒内就绪,看日志:$(svc_log_hint hermes-dashboard)"; fi
+    if dashboard_wait_ready; then ok "面板服务已就绪(端口 ${DASH_PORT} 监听中)"; else warn "面板未在 60 秒内就绪,看日志:$(svc_log_hint hermes-dashboard)"; fi
 
     [[ "$HV_MODE" == "system" ]] && progress "配置 Caddy 反向代理与 HTTPS" || progress "Caddy 反向代理(用户态跳过)"
     if [[ "$HV_MODE" != "system" ]]; then
@@ -114,7 +121,8 @@ deploy_all() {
     if [[ -n "$domain" && "$HV_MODE" == "system" ]]; then
         dim "浏览器打开:https://${domain}/  账号密码见 ${CRED_FILE}"
     else
-        dim "面板在本机 127.0.0.1:${DASH_PORT}(账号密码见 ${CRED_FILE})"
+        dim "未配置域名:面板未对外开放 —— 请用菜单 4 配置域名,之后用 https://<你的域名>/ 访问"
+        dim "账号密码见 ${CRED_FILE}"
         if [[ "$HV_MODE" != "system" && -n "$domain" ]]; then
             dim "要用域名公网访问:换成 root 执行 sudo bash $SELF(菜单 4 配 Caddy/HTTPS)"
         fi

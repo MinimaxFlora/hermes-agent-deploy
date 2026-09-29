@@ -335,7 +335,7 @@ systemctl --user restart hermes-dashboard   # user mode (or restart from menu 6)
 ```
 
 `hermes-vps diagnose` includes a “panel accepts the domain Host (HTTP …)” line; a 400 there means exactly the above.
-Also, **visiting the raw IP** may be refused — prefer the domain, or reach `127.0.0.1` over an SSH tunnel.
+This tool only presents the **domain** as the access address: `127.0.0.1` is unreachable from your machine, so it never appears in the prompts or the credentials file (raw-IP access can also be refused by the dashboard's Host check).
 
 ## 🧰 Developer notes: pitfalls found on real machines
 

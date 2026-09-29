@@ -43,7 +43,11 @@ api_server_enable() { # 让 OpenAI 兼容 /v1 在本地端口可用
     hcfg "platforms.api_server.port" "$API_PORT" >/dev/null 2>&1 || true
     hcfg "platforms.api_server.host" "127.0.0.1" >/dev/null 2>&1 || true
     st_set API_ENABLED "1"; st_set API_SERVER "on"
-    ok "API Server 已开启(127.0.0.1:${API_PORT})"
+    if [[ -n "$(st_get DOMAIN)" ]]; then
+        ok "API Server 已开启:https://$(st_get DOMAIN)/v1"
+    else
+        ok "API Server 已开启,但未配置域名 → 不对外开放(菜单 4 可配域名)"
+    fi
 }
 api_server_disable() {
     hcfg "platforms.api_server.enabled" "false" >/dev/null 2>&1 || true
@@ -62,10 +66,20 @@ credentials_write() {
     {
         printf '# hermes-vps 访问凭据(自动生成,请妥善保管)\n'
         printf '# 生成时间:%s\n\n' "$(date -Is)"
-        [[ -n "$domain" ]] && printf '面板地址   : https://%s/\n' "$domain" || printf '面板地址   : http://127.0.0.1:%s/(尚未配置域名)\n' "$DASH_PORT"
+        # 只给域名访问地址:服务器上的 127.0.0.1 对使用者没有意义(VPS 上根本访问不到),
+        # 所以未配置域名时明确说明"未对外开放",而不是给出一个用不了的地址
+        if [[ -n "$domain" ]]; then
+            printf '面板地址   : https://%s/\n' "$domain"
+        else
+            printf '面板地址   : 未配置域名(面板未对外开放;请用菜单 4 配置域名)\n'
+        fi
         printf '面板用户名 : %s\n' "$u"
         printf '面板密码   : %s\n' "$p"
-        [[ -n "$domain" ]] && printf 'API 地址   : https://%s/v1\n' "$domain" || printf 'API 地址   : http://127.0.0.1:%s/v1\n' "$API_PORT"
+        if [[ -n "$domain" ]]; then
+            printf 'API 地址   : https://%s/v1\n' "$domain"
+        else
+            printf 'API 地址   : 未配置域名(API 未对外开放)\n'
+        fi
         printf 'API Key    : %s\n' "$ak"
         printf '会话密钥   : %s\n' "$s"
     } >"$CRED_FILE"
@@ -77,13 +91,20 @@ dashboard_show_info() {
     header "面板与 API 访问信息"
     local u; u="$(env_get HERMES_DASHBOARD_BASIC_AUTH_USERNAME)"
     rule
-    printf '    面板(本机) : http://127.0.0.1:%s/\n' "$DASH_PORT"
+    if [[ -n "$(st_get DOMAIN)" ]]; then
+        printf '    面板(公网) : %shttps://%s/%s\n' "$G" "$(st_get DOMAIN)" "$N"
+    else
+        printf '    面板       : %s未对外开放(请用菜单 4 配置域名)%s\n' "$Y" "$N"
+    fi
     [[ -n "$domain" ]] && printf '    面板(域名) : %shttps://%s/%s\n' "$BD" "$domain" "$N"
     printf '    管理账号   : %s%s%s\n' "$BD" "$u" "$N"
     printf '    密码/APIkey: 见 %s%s%s(600 权限)\n' "$BD" "$CRED_FILE" "$N"
     if [[ "$(st_api_enabled)" == "1" ]]; then
-        [[ -n "$domain" ]] && printf '    API        : https://%s/v1  (OpenAI 兼容)\n' "$domain"
-        printf '    API        : http://127.0.0.1:%s/v1\n' "$API_PORT"
+        if [[ -n "$domain" ]]; then
+            printf '    API        : https://%s/v1  (OpenAI 兼容)\n' "$domain"
+        else
+            printf '    API        : 未对外开放(未配置域名)\n'
+        fi
     else
         printf '    API        : %s未开启%s\n' "$DM" "$N"
     fi

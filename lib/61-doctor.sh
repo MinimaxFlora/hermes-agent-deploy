@@ -21,6 +21,10 @@ diagnose() {
     diag_add info "系统:$OS_NAME · $ARCH · ${CORES} 核 · 内存 ${MEM_MB}MB · 磁盘剩余 ${DISK_MB}MB"
     [[ "${MEM_MB:-0}" -lt 1500 && "$(swap_total_mb)" -lt 512 ]] && diag_add warn "内存偏小且无 swap,安装/更新可能 OOM" || diag_add ok "内存/swap 充足"
 
+    if [[ -z "$(st_get DOMAIN)" ]]; then
+        diag_add fail "未配置域名:面板与 API 都无法从公网访问(菜单 4 配置域名 + 自动 HTTPS)"
+    fi
+
     printf '\n  %s安装%s\n' "$BD" "$N"
     if hermes_installed; then diag_add ok "Hermes:$(hermes_version 2>/dev/null || echo 未知)"; else diag_add fail "Hermes 未安装(菜单 1 一键部署)"; fi
     [[ -d "$UHOME/hermes-agent/hermes_cli/web_dist" ]] && diag_add ok "界面产物存在(web_dist)" || diag_add warn "界面产物缺失(重新部署会自动修复)"
