@@ -179,7 +179,10 @@ svc_ctl() { # svc_ctl start|stop|restart|reload <svc>
     if [[ "$HV_MODE" == "system" ]]; then systemctl "$action" "$s" >/dev/null 2>&1; return $?; fi
     if user_systemd_ok; then systemctl --user "$action" "$s" >/dev/null 2>&1; return $?; fi
     case "$action" in
-        start|restart) usermode_bg_start "$s" >/dev/null 2>&1 ;;
+        # 注意:restart 必须是 stop + start —— 只调 start 时,若 pid 还活着会直接返回,
+        # 于是"重启"变成空操作(真机踩过:改了配置重启面板却不生效,面板还拿着旧配置)
+        start)         usermode_bg_start "$s" >/dev/null 2>&1 ;;
+        restart)       usermode_bg_stop "$s" >/dev/null 2>&1; usermode_bg_start "$s" >/dev/null 2>&1 ;;
         stop)          usermode_bg_stop "$s" >/dev/null 2>&1 ;;
         reload)        usermode_bg_stop "$s" >/dev/null 2>&1; usermode_bg_start "$s" >/dev/null 2>&1 ;;
     esac
@@ -201,18 +204,39 @@ usermode_bg_start() {
     if [[ -f "$pf" ]] && kill -0 "$(cat "$pf" 2>/dev/null)" 2>/dev/null; then return 0; fi
     cmd="$(usermode_bg_cmd "$s")" || return 1
     [[ -x "${cmd%% *}" ]] || { warn "找不到可执行文件:${cmd%% *}"; return 1; }
-    ( setsid env HOME="$USER_HOME" HERMES_HOME="$UHOME" nohup bash -lc "$cmd" >>"$log" 2>&1 & echo $! >"$pf" )
+    # 用 nohup + $! 直接记录真实进程 pid(用 setsid 时 $! 可能只是包装进程 → 之后 stop 杀不到)
+    nohup env HOME="$USER_HOME" HERMES_HOME="$UHOME" bash -lc "$cmd" >>"$log" 2>&1 &
+    echo $! >"$pf"
+    disown 2>/dev/null || true
     sleep 2
     if [[ -f "$pf" ]] && kill -0 "$(cat "$pf" 2>/dev/null)" 2>/dev/null; then return 0; else return 1; fi
 }
+port_owner_pid() { # 谁在监听该端口(需要能看自己的进程)
+    command -v ss >/dev/null 2>&1 || return 1
+    ss -lntp 2>/dev/null | grep -F ":$1 " | sed -n 's/.*pid=\([0-9]*\).*//p' | head -1
+}
 usermode_bg_stop() {
-    local s="$1" pf pid
+    local s="$1" pf pid i
     pf="$(pidfile_for "$s")"
-    [[ -f "$pf" ]] || return 0
     pid="$(cat "$pf" 2>/dev/null)" || pid=""
-    [[ -n "$pid" ]] && kill "$pid" 2>/dev/null || true
-    sleep 1
-    [[ -n "$pid" ]] && kill -9 "$pid" 2>/dev/null || true
+    if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
+        kill "$pid" 2>/dev/null || true
+        for i in 1 2 3 4 5; do kill -0 "$pid" 2>/dev/null || break; sleep 1; done
+        if kill -0 "$pid" 2>/dev/null; then kill -9 "$pid" 2>/dev/null || true; sleep 1; fi
+    fi
+    # 兜底:pid 记录不准时,按端口找真正的进程(面板/网关都会占端口)
+    local port=""
+    case "$s" in
+        hermes-dashboard) port="$DASH_PORT" ;;
+        hermes-gateway)   port="$API_PORT" ;;
+    esac
+    if [[ -n "$port" ]] && port_in_use "$port"; then
+        local owner; owner="$(port_owner_pid "$port" || true)"
+        if [[ -n "$owner" && "$owner" != "$pid" ]]; then
+            kill "$owner" 2>/dev/null || true; sleep 1
+            kill -0 "$owner" 2>/dev/null && kill -9 "$owner" 2>/dev/null || true
+        fi
+    fi
     rm -f "$pf"
     return 0
 }
