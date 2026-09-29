@@ -120,6 +120,16 @@ assert_eq "1" "$DR_API" "domain-root:--api 解析"
 domain_root_parse panel.example.com
 assert_eq "9119" "$DR_PORT" "domain-root:未给端口时用本实例默认端口"
 
+# 服务状态判定:用户态先看 pidfile(机器上有用户级 systemd 但没装我们的单元时,
+# 只问 systemctl 会误报 inactive,而服务其实活着)
+_dpf="$(pidfile_for hermes-dashboard)"
+mkdir -p "$(dirname "$_dpf")"
+printf '%s' "$$" >"$_dpf"
+assert_eq "active" "$(HV_MODE=user svc_state hermes-dashboard)" "pidfile 指向存活进程 → active"
+printf '%s' "999999" >"$_dpf"
+assert_eq "inactive" "$(HV_MODE=user svc_state hermes-dashboard)" "pidfile 指向死进程 → inactive"
+rm -f "$_dpf"
+
 # 其他用户实例探测(root 模式下提醒"别又装一套")
 _tu="$(mktemp -d)"; mkdir -p "$_tu/alice/.config/hermes-vps" "$_tu/bob/.config"; : >"$_tu/alice/.config/hermes-vps/state.env"
 assert_eq "alice" "$(HV_HOME_ROOT="$_tu" other_user_instances_users)" "探测其他用户的用户态实例"

@@ -162,9 +162,19 @@ svc_unit_path() {
 svc_state() { # active / failed / inactive / unknown
     local s="$1"
     if [[ "$HV_MODE" == "system" ]]; then systemctl is-active "$s" 2>/dev/null || echo unknown; return 0; fi
-    if user_systemd_ok; then systemctl --user is-active "$s" 2>/dev/null || echo unknown; return 0; fi
+    # 用户态:我们自己的托管方式是"后台进程 + pidfile",必须先看它 ——
+    # 只看 systemctl --user 会在"机器上有用户级 systemd、但我们的单元没装"时报 inactive,
+    # 而服务与端口其实都正常(真机踩过:菜单显示 inactive,用户以为服务挂了)
     local pf; pf="$(pidfile_for "$s")"
-    if [[ -f "$pf" ]] && kill -0 "$(cat "$pf" 2>/dev/null)" 2>/dev/null; then printf 'active'; else printf 'inactive'; fi
+    if [[ -f "$pf" ]]; then
+        if kill -0 "$(cat "$pf" 2>/dev/null)" 2>/dev/null; then printf 'active'; else printf 'inactive'; fi
+        return 0
+    fi
+    if user_systemd_ok && systemctl --user cat "$s" >/dev/null 2>&1; then
+        systemctl --user is-active "$s" 2>/dev/null || echo unknown
+        return 0
+    fi
+    printf 'inactive'
     return 0
 }
 svc_enabled() {
