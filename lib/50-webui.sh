@@ -133,6 +133,31 @@ dashboard_verify_gate() { # 认证门是否生效
         *) printf 'other:%s' "$c2" ;;
     esac
 }
+# 面板的 Host 白名单是"启动时"从 dashboard.public_url 读定的:写完 public_url 必须重启面板,
+# 否则域名访问会被中间件拒成 400 Invalid Host header(真机踩过:配好域名却一直 400)。
+# 判定必须用 /login 这类真实页面:**`/` 会先被认证门 302 短路,根本走不到 Host 校验,看不出问题**。
+dashboard_host_probe() { # 面板对指定域名的响应码(400 = Host 白名单里没有它)
+    local dom="${1:-$(st_get DOMAIN)}" p="${2:-/login?next=%2F}"
+    [[ -n "$dom" ]] || { printf '000'; return 0; }
+    curl -sS -m 8 -o /dev/null -w '%{http_code}' -H "Host: $dom" "http://127.0.0.1:${DASH_PORT}${p}" 2>/dev/null || printf '000'
+}
+dashboard_ensure_host_ok() { # 域名 Host 被拒 → 重启面板并复验
+    local dom; dom="$(st_get DOMAIN)"
+    [[ -n "$dom" ]] || return 0
+    local code; code="$(dashboard_host_probe "$dom")"
+    [[ "$code" != "400" ]] && return 0
+    warn "面板拒绝域名 Host($dom,HTTP 400):重启面板使 dashboard.public_url 生效…"
+    svc_ctl restart hermes-dashboard >/dev/null 2>&1 || true
+    dashboard_wait_ready || true
+    code="$(dashboard_host_probe "$dom")"
+    if [[ "$code" == "400" ]]; then
+        warn "仍被拒绝:请确认 dashboard.public_url($(hcfg_get dashboard.public_url))与实际访问域名一致"
+    else
+        ok "面板已接受域名 Host(HTTP $code)"
+    fi
+    return 0
+}
+
 dashboard_wait_ready() { # 等待面板监听
     local i=0
     # 后台进程模式(用户态、无 systemd --user):端口有响应不代表是我们的实例

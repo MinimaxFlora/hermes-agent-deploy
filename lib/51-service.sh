@@ -117,6 +117,7 @@ EOF
 )"
     if [[ -f "$file" ]] && diff -q <(printf '%s\n' "$content") "$file" >/dev/null 2>&1 && systemctl is-enabled "$unit" >/dev/null 2>&1; then
         ok "面板服务已就绪(无需变更)"
+        dashboard_ensure_host_ok      # 面板的 Host 白名单在启动时读取,域名变了必须重启
         return 0
     fi
     step "安装面板系统服务"
@@ -126,6 +127,7 @@ EOF
     systemctl enable "$unit" >/dev/null 2>&1 || true
     systemctl restart "$unit" 2>/dev/null || true
     ok "面板服务已安装并启动"
+    dashboard_ensure_host_ok
 }
 
 svc() { # 服务名归一化
