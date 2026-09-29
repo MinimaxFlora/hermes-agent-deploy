@@ -52,13 +52,25 @@ deps_install() {
         local b; for b in curl git tar openssl; do have "$b" || miss+=("$b"); done
         if [[ ${#miss[@]} -eq 0 ]]; then ok "基础依赖齐备(用户态不需要系统包)"
         else warn "缺少系统命令:${miss[*]}"; dim "请管理员执行:sudo apt-get install -y ${miss[*]}"; fi
+        # 官方自带 node 运行时需要 libatomic.so.1:用户态装不了系统包,必须现在讲清楚,
+        # 否则要等官方安装脚本跑到 pm install 才失败(真机:Debian 12 最小安装就缺这个)
+        if ldconfig -p 2>/dev/null | grep -q "libatomic\.so\.1"; then
+            ok "运行库检查通过(libatomic.so.1 存在)"
+        else
+            warn "缺少 libatomic.so.1(官方自带的 node 运行时需要,缺了会在安装到一半时失败)"
+            dim "请管理员先执行:sudo apt-get install -y libatomic1(Debian/Ubuntu)"
+            dim "           或:sudo dnf install -y libatomic(RHEL/CentOS)"
+        fi
         return 0
     fi
     require_root "安装系统依赖"
     local -a pkgs=()
     case "$PKG" in
-        apt)    pkgs=(curl git tar xz-utils openssl ca-certificates jq unzip) ;;
-        dnf|yum) pkgs=(curl git tar xz openssl ca-certificates jq unzip) ;;
+        # libatomic1/libstdc++6:官方工具自带的 node 运行时依赖 libatomic.so.1,
+        # Debian 12 最小安装默认没有 —— 缺了会在官方脚本的 "pm install" 阶段才炸
+        # (node 校验失败 → pm install failed → 退出 1),白等十几分钟。真机踩过。
+        apt)    pkgs=(curl git tar xz-utils openssl ca-certificates jq unzip libatomic1 libstdc++6) ;;
+        dnf|yum) pkgs=(curl git tar xz openssl ca-certificates jq unzip libatomic) ;;
         apk)    pkgs=(curl git tar xz openssl ca-certificates jq unzip) ;;
         pacman) pkgs=(curl git tar xz openssl ca-certificates jq unzip) ;;
     esac
@@ -66,6 +78,10 @@ deps_install() {
     [[ ${#pkgs[@]} -gt 0 ]] && pkg_install "${pkgs[@]}" || true
     local c
     for c in curl git tar openssl; do have "$c" || die "缺少命令 $c,请手工安装后重试"; done
+    if ! ldconfig -p 2>/dev/null | grep -q "libatomic\.so\.1"; then
+        warn "libatomic.so.1 仍缺失(官方 node 运行时依赖):安装可能停在 pm install 阶段"
+        dim "手动修复:apt-get install -y libatomic1 或 dnf install -y libatomic"
+    fi
     ok "基础依赖就绪"
 }
 
