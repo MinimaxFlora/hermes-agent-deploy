@@ -120,6 +120,14 @@ assert_eq "1" "$DR_API" "domain-root:--api 解析"
 domain_root_parse panel.example.com
 assert_eq "9119" "$DR_PORT" "domain-root:未给端口时用本实例默认端口"
 
+# 其他用户实例探测(root 模式下提醒"别又装一套")
+_tu="$(mktemp -d)"; mkdir -p "$_tu/alice/.config/hermes-vps" "$_tu/bob/.config"; : >"$_tu/alice/.config/hermes-vps/state.env"
+assert_eq "alice" "$(HV_HOME_ROOT="$_tu" other_user_instances_users)" "探测其他用户的用户态实例"
+assert_eq "1" "$(HV_HOME_ROOT="$_tu" other_user_instances | wc -l | tr -d ' ')" "实例条数正确"
+_tu2="$(mktemp -d)"; mkdir -p "$_tu2/carol"
+assert_eq "" "$(HV_HOME_ROOT="$_tu2" other_user_instances_users)" "无实例时输出为空"
+rm -rf "$_tu" "$_tu2"
+
 # root 侧助手:非 root 调用只提示、不崩(它本来就是给 sudo 用的)
 dr_out="$(bash "$DIST" domain-root panel.example.com 2>&1)" || true
 assert_contains "$dr_out" "root 侧助手" "domain-root 子命令存在,非 root 时给出提示而非报错崩掉"

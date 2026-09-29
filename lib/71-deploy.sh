@@ -8,6 +8,16 @@ deploy_all() {
     clear_screen
     header "一键部署"
     detect_os
+    # 机器上已有普通用户的用户态实例时,系统级部署通常不是本意(真机:两套实例抢端口/抢面板)
+    if [[ "$HV_MODE" == "system" ]]; then
+        local _others; _others="$(other_user_instances_users 2>/dev/null || true)"
+        if [[ -n "$_others" ]]; then
+            warn "本机已经有用普通用户部署的 Hermes 实例:${_others}"
+            dim "再装一套系统级实例会各占端口、抢同一个面板/网关"
+            dim "要管理现成那套:换成该用户身份运行本工具(例:su - ${_others%%,*} 然后 hermes-vps)"
+            confirm "仍要部署系统级实例?" no || { info "已取消(用现成实例的账号运行本工具即可管理)"; pause; return 0; }
+        fi
+    fi
     printf '    系统:%s · %s · %s 核 · 内存 %sMB · 磁盘剩余 %sMB\n' "$OS_NAME" "$ARCH" "$CORES" "$MEM_MB" "$DISK_MB"
     printf '    模式:%s\n' "$(mode_label)"
     if [[ "$PKG" == "" ]]; then

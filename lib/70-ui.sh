@@ -113,6 +113,12 @@ status_panel() {
     fi
 
     printf '\n'
+    if [[ "$HV_MODE" == "system" ]]; then
+        local _others; _others="$(other_user_instances_users 2>/dev/null || true)"
+        if [[ -n "$_others" ]]; then
+            row "  ⚠ 本机另有用户态实例:${_others}(用该账号运行本工具管理)" "  ${Y}⚠${N} 本机另有用户态实例:${Y}${_others}${N}(${DM}用该账号运行本工具管理${N})"
+        fi
+    fi
     printf '  %s运行状态%s %s%s%s\n' "$BD$W" "$N" "$DM" "$(printf '─%.0s' $(seq 1 62))" "$N"
     local i
     for i in "${!P[@]}"; do printf '%s\n' "${CL[$i]}"; done

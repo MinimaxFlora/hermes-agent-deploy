@@ -100,6 +100,28 @@ OK_SYM="${G}✔${N}"; NO_SYM="${R}✘${N}"; WARN_SYM="${Y}!${N}"; DOT_ON="${G}�
 # 日志与错误
 # ---------------------------------------------------------------------------
 LOG_FILE="${TOOL_LOG_DIR}/hermes-vps.log"
+# ---------------------------------------------------------------- 其他用户的实例
+# 为什么需要:本工具按"当前身份"自动分模式 —— root 敲 hermes-vps 看到的是系统级菜单,
+# 一按 1 就会在 /opt/hermes 再装一套系统级实例,和已在某普通用户名下的实例抢端口/抢面板。
+# root 模式下主动把这件事讲清楚(真机踩过:机器上出现两套,用户还以为在看自己那套)。
+# 目录来源可用 HV_HOME_ROOT 覆盖(测试用)。
+other_user_instances() { # 输出每行 "<用户>|<状态文件>"
+    local root="${HV_HOME_ROOT:-/home}" f u
+    for f in "$root"/*/.config/hermes-vps/state.env; do
+        [[ -f "$f" ]] || continue
+        u="$(printf '%s' "$f" | sed "s|^${root}/||; s|/\.config/.*||")"
+        [[ -n "$u" ]] && printf '%s|%s
+' "$u" "$f"
+    done
+    return 0
+}
+other_user_instances_users() { # 逗号分隔的用户名(没有则输出空)
+    local list; list="$(other_user_instances)" || return 0
+    [[ -n "$list" ]] || return 0
+    printf '%s' "$list" | cut -d"|" -f1 | sed "/^$/d" | sort -u | paste -sd, - 2>/dev/null || true
+    return 0
+}
+
 _log() {
     local lv="$1"; shift
     local line; line="$(date '+%Y-%m-%d %H:%M:%S') [$lv] $*"
