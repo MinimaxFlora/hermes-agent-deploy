@@ -326,6 +326,19 @@ systemd ユニット:`hermes-gateway.service`、`hermes-dashboard.service`、`ca
 
 ---
 
+### ドメインでアクセスすると `{"detail":"Invalid Host header. Dashboard requests must use the bound hostname or the configured public hostname."}` と出る
+
+ダッシュボードが受け付けるのは**バインドしたホスト名(127.0.0.1)**または **`dashboard.public_url` のホスト名**だけで、
+この許可リストは**起動時に読み込まれます**。ドメイン設定後はダッシュボードを再起動してください:
+
+```bash
+sudo systemctl restart hermes-dashboard     # システムモード(root 導入)
+systemctl --user restart hermes-dashboard   # ユーザーモード(メニュー 6 からでも可)
+```
+
+`hermes-vps diagnose` に「面板接受域名 Host(HTTP xxx)」の項目があり、400 なら上記が原因です。
+なお **IP で直接アクセス**すると拒否される場合があります(バインド方法による)。ドメインか SSH トンネル経由の `127.0.0.1` を使ってください。
+
 ## 🧰 開発者向けメモ:実機で踏んだ落とし穴
 
 このスクリプトを編集する前に読む価値があります(すべて実際のデプロイから)。

@@ -275,6 +275,18 @@ domain_configure() {
     dashboard_webui "$domain"
     caddy_install || { pause; return 1; }
     caddy_write_config "$domain" "$email" "$(st_api_enabled)" || { pause; return 1; }
+    # 官方面板在启动时读取 dashboard.public_url 决定接受哪些 Host:写完必须重启,否则用域名
+    # 访问会被中间件拒成 400 Invalid Host header(真机踩过,用户就是栽在这里)
+    info "重启面板以应用域名(Host 校验在启动时读取 public_url)…"
+    svc_ctl restart hermes-dashboard >/dev/null 2>&1 || true
+    if dashboard_wait_ready; then ok "面板已按新域名重启"; else warn "面板未在 60 秒内就绪,稍后用菜单 6 重启"; fi
+    local hc
+    hc="$(curl -sS -m 8 -o /dev/null -w '%{http_code}' -H "Host: ${domain}" "http://127.0.0.1:${DASH_PORT}/" 2>/dev/null || echo 000)"
+    case "$hc" in
+        400) warn "面板仍在拒绝该域名 Host:请重启面板($(svc_log_hint hermes-dashboard | sed 's/.*-u //; s/ -n.*//' ) 或菜单 6)" ;;
+        000) dim "本机回环探测无响应(不影响公网访问)" ;;
+        *)   ok "面板已接受域名 Host(HTTP $hc)" ;;
+    esac
     ok "HTTPS 已配置:https://${domain}/"
     dim "首次签发约需 10~30 秒;若失败请看:journalctl -u caddy -n 30"
     sleep 3

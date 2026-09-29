@@ -326,6 +326,19 @@ systemd 유닛: `hermes-gateway.service`, `hermes-dashboard.service`, `caddy.ser
 
 ---
 
+### 도메인으로 접속하면 `{"detail":"Invalid Host header. Dashboard requests must use the bound hostname or the configured public hostname."}` 가 뜹니다
+
+대시보드는 **바인딩한 호스트명(127.0.0.1)** 또는 **`dashboard.public_url` 의 호스트명**만 허용하며,
+이 허용 목록은 **시작할 때 읽습니다**. 도메인 설정 후 대시보드를 재시작하세요:
+
+```bash
+sudo systemctl restart hermes-dashboard     # 시스템 모드(root 설치)
+systemctl --user restart hermes-dashboard   # 사용자 모드(메뉴 6 에서도 가능)
+```
+
+`hermes-vps diagnose` 에 「面板接受域名 Host(HTTP xxx)」 항목이 있고, 400 이면 위가 원인입니다.
+또한 **IP 로 직접 접속**하면 거부될 수 있습니다(바인딩 방식에 따라). 도메인 또는 SSH 터널의 `127.0.0.1` 을 사용하세요.
+
 ## 🧰 개발자 메모: 실장비에서 밟은 함정
 
 이 스크립트를 수정하기 전에 읽어 볼 만합니다(모두 실제 배포에서 나온 것).

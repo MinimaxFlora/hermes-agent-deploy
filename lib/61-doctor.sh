@@ -52,6 +52,17 @@ diagnose() {
         down) diag_add fail "面板无响应" ;;
         other:*) diag_add info "面板返回 $(dashboard_verify_gate)" ;;
     esac
+    # 面板只接受"绑定主机名"或 dashboard.public_url 里的 Host,而且这是启动时读的
+    # → 配好域名后必须重启面板,否则域名访问会被拒成 400 Invalid Host header(真机踩过)
+    if [[ -n "$(st_get DOMAIN)" ]]; then
+        local hc
+        hc="$(curl -sS -m 8 -o /dev/null -w '%{http_code}' -H "Host: $(st_get DOMAIN)" "http://127.0.0.1:${DASH_PORT}/" 2>/dev/null || echo 000)"
+        case "$hc" in
+            400) diag_add fail "面板拒绝域名 Host(400 Invalid Host header):重启面板即可(系统级:sudo systemctl restart hermes-dashboard;用户态:菜单 6 重启)" ;;
+            000) diag_add warn "面板回环探测无响应(端口 ${DASH_PORT} 未监听?)" ;;
+            *)   diag_add ok "面板接受域名 Host(HTTP $hc)" ;;
+        esac
+    fi
 
     printf '\n  %s模型%s\n' "$BD" "$N"
     local cur; cur="$(model_current 2>/dev/null || echo '-|-')"

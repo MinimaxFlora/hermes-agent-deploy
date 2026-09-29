@@ -328,6 +328,19 @@ systemd 單元:`hermes-gateway.service`、`hermes-dashboard.service`、`caddy.se
 
 ---
 
+### 用網域訪問出現 `{"detail":"Invalid Host header. Dashboard requests must use the bound hostname or the configured public hostname."}`?
+
+官方面板只接受**綁定主機名(127.0.0.1)**或 **`dashboard.public_url` 裡的主機名**,而且這份白名單是**面板啟動時讀取**的。
+所以設定好網域後必須重啟面板:
+
+```bash
+sudo systemctl restart hermes-dashboard     # 系統級(root 安裝)
+systemctl --user restart hermes-dashboard   # 使用者態(或用選單 6 重啟)
+```
+
+`hermes-vps diagnose` 會有一項「面板接受域名 Host(HTTP xxx)」,出現 400 就是這個原因。
+另外直接用 **IP 訪問**可能被拒(取決於綁定方式),建議用網域或 SSH 隧道訪問 `127.0.0.1`。
+
 ## 🧰 開發者備忘:真機踩過的坑
 
 改這支腳本前值得一讀(全部來自真實部署):

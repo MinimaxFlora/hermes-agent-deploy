@@ -324,6 +324,19 @@ Menu 13 lists every path and its purpose first, then asks per item; everything i
 
 ---
 
+### Visiting my domain returns `{"detail":"Invalid Host header. Dashboard requests must use the bound hostname or the configured public hostname."}`?
+
+The dashboard only accepts the **bound hostname (127.0.0.1)** or the hostname in **`dashboard.public_url`**, and that allow-list is read **when the dashboard starts**.
+So after configuring a domain you must restart the dashboard:
+
+```bash
+sudo systemctl restart hermes-dashboard     # system-wide (installed as root)
+systemctl --user restart hermes-dashboard   # user mode (or restart from menu 6)
+```
+
+`hermes-vps diagnose` includes a “panel accepts the domain Host (HTTP …)” line; a 400 there means exactly the above.
+Also, **visiting the raw IP** may be refused — prefer the domain, or reach `127.0.0.1` over an SSH tunnel.
+
 ## 🧰 Developer notes: pitfalls found on real machines
 
 Worth reading before editing this script (all from real deployments):
