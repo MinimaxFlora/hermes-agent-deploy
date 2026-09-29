@@ -291,7 +291,7 @@ domain_configure_usermode() {
     header "域名与反向代理(用户态 + root 侧 Caddy)"
     local cur; cur="$(st_get DOMAIN)"
     printf '    当前域名:%s%s%s\n' "$BD" "${cur:-未配置}" "$N"
-    dim "本实例面板端口:$DASH_PORT · API 端口:$API_PORT · 配置文件:$CADDYFILE"
+    dim "本实例面板端口:$DASH_PORT · API 端口:$API_PORT · root 侧配置:/etc/caddy/Caddyfile"
     local domain="${1:-}"
     if [[ -z "$domain" ]]; then ask domain "域名(例:panel.example.com,回车跳过)" "$cur"; fi
     if [[ -z "$domain" ]]; then info "未提供域名,跳过"; pause; return 0; fi
@@ -315,10 +315,17 @@ domain_configure_usermode() {
     if is_root; then
         domain_root_configure "$domain" --port "$DASH_PORT" --api-port "$API_PORT" --email "$email" --api "$api_on" || rrc=$?
     elif have_sudo; then
-        sudo -n bash "$SELF" domain-root "$domain" --port "$DASH_PORT" --api-port "$API_PORT" --email "$email" --api "$api_on" || rrc=$?
+        # 注意:必须直接执行脚本(靠 shebang),不能写 `sudo bash $SELF` ——
+        # sudoers 按"命令路径"匹配,写成 bash 时匹配的是 /usr/bin/bash,白名单规则会失效
+        if [[ -x "$SELF" ]]; then
+            sudo -n "$SELF" domain-root "$domain" --port "$DASH_PORT" --api-port "$API_PORT" --email "$email" --api "$api_on" || rrc=$?
+        else
+            sudo -n bash "$SELF" domain-root "$domain" --port "$DASH_PORT" --api-port "$API_PORT" --email "$email" --api "$api_on" || rrc=$?
+        fi
         if [[ $rrc -ne 0 ]]; then
-            warn "免密 sudo 不可用(需要输入密码)"
-            dim "请手动执行:sudo bash $SELF domain-root $domain --port $DASH_PORT --api-port $API_PORT"
+            warn "免密 sudo 不可用(需要输入密码或缺少白名单)"
+            dim "请手动执行:sudo $SELF domain-root $domain --port $DASH_PORT --api-port $API_PORT"
+            dim "或加白名单:/etc/sudoers.d/hermes-vps-domain 内容:$USER ALL=(root) NOPASSWD: $SELF domain-root *"
         fi
     else
         warn "系统里没有 sudo,无法配置 80/443 与证书"
@@ -335,8 +342,9 @@ domain_configure_usermode() {
 
     st_set DOMAIN "$domain"; st_set ACME_EMAIL "$email"; st_set API_ENABLED "$api_on"
     if [[ $rrc -ne 0 ]]; then
-        warn "root 侧未完成:先解决上面的提示,再用相同的域名重跑本命令"
-        pause; return 1
+        warn "root 侧未完成:按上面的提示处理后,用相同域名重跑本命令"
+        dim "用户侧已生效:public_url=https://${domain} 且面板已重启"
+        pause; return 0
     fi
     ok "HTTPS 已配置:https://${domain}/"
     dim "首次签发约需 10~30 秒"
