@@ -62,7 +62,12 @@ main() {
     [[ "$DEBUG_ON" == "1" ]] && set -x
 
     detect_os
-    state_init
+    # 只读命令不建目录:root 下执行一次 version 都会创建 /etc/hermes-vps、/var/log/hermes-vps,
+    # 用户删掉系统级实例后它们又会"自己长回来"(真机踩过)
+    case "${args[0]:-}" in
+        help|-h|--help|version|-V|--version|mode|--mode|selftest) : ;;
+        *) state_init ;;
+    esac
     load_mirror_env
     # 生效端口:用户态撞端口时 ensure_free_ports 会把新端口记进 state,这里读回来
     DASH_PORT="$(st_get DASH_PORT "$DASH_PORT")"
