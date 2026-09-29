@@ -78,6 +78,12 @@ off="$(caddy_render "panel.example.com" "" 0)"
 assert_not_contains "$off" "handle /v1/*" "关闭 API 时不生成 /v1 路由"
 assert_not_contains "$off" "email" "无邮箱时不写 email 指令"
 assert_contains "$off" "reverse_proxy 127.0.0.1:9119" "关闭 API 时面板仍反代"
+# 端口覆盖:用户态实例的面板端口不一定是 9119(真机踩过 9120),root 侧助手必须按传入端口渲染,
+# 否则证书配好了、反代却打到 9119(别的实例或空门)
+ovr="$(HV_RENDER_DASH_PORT=9120 HV_RENDER_API_PORT=8643 caddy_render "panel.example.com" "" 1)"
+assert_contains "$ovr" "reverse_proxy 127.0.0.1:9120" "面板端口可覆盖(用户态实例)"
+assert_contains "$ovr" "reverse_proxy 127.0.0.1:8643" "API 端口可覆盖"
+assert_not_contains "$ovr" "127.0.0.1:9119" "覆盖后不再出现默认端口"
 
 section "JSON 取值"
 d="$(tmpdir)"; j="$d/r.json"
@@ -103,5 +109,9 @@ else
     c_bad "selftest 在仓库外失败(退出码 ${st_rc:-?})"
     printf '%s\n' "$st_out" | sed 's/^/      /'
 fi
+
+# root 侧助手:非 root 调用只提示、不崩(它本来就是给 sudo 用的)
+dr_out="$(bash "$DIST" domain-root panel.example.com 2>&1)" || true
+assert_contains "$dr_out" "root 侧助手" "domain-root 子命令存在,非 root 时给出提示而非报错崩掉"
 
 summary
