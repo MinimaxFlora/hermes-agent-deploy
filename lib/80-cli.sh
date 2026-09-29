@@ -20,7 +20,7 @@ usage() {
     model             模型提供商配置(install 后可随时执行)
     platform          消息平台接入
     pairing [动作]    配对审批:list|approve <平台> <码>|all|watch [秒]|pairing|open|closed
-    domain <域名>     配置 Caddy + 自动 HTTPS
+    domain <域名>     配置 Caddy + 自动 HTTPS(用户态会自动调 root 侧助手配 80/443)
     panel             面板凭据/API 开关
     service <动作>    start|stop|restart|status|logs [gateway|dashboard|caddy]
     diagnose          自检与诊断
@@ -100,7 +100,10 @@ main() {
                 closed|off)     pairing_policy_set closed ;;
                 *) err "用法: pairing [list|approve <平台> <配对码>|all|watch [秒]|pairing|open|closed]"; exit 1 ;;
             esac ;;
-        domain) domain_configure ;;
+        domain) domain_configure "${1:-}" ;;
+        domain-root) # root 侧助手:用户态部署时由 sudo 调用(只写 Caddy,不碰状态)
+            shift || true
+            domain_root_configure "$@" ;;
         panel) panel_menu ;;
         service)
             local action="${1:-status}"; shift || true

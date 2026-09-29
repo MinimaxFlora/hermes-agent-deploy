@@ -103,6 +103,10 @@ EOF
 
 caddy_render() { # 生成 Caddyfile 到 stdout
     local domain="$1" email="$2" api_on="$3"
+    # 端口可由调用方覆盖:用户态实例的面板/API 端口不一定是 9119/8642(真机踩过 9120),
+    # root 侧助手必须按"本实例真实端口"渲染,否则证书配好了但反代打到别人家门上
+    local DASH_PORT="${HV_RENDER_DASH_PORT:-$DASH_PORT}"
+    local API_PORT="${HV_RENDER_API_PORT:-$API_PORT}"
     if [[ -n "$email" ]]; then
         printf '{\n\tadmin 127.0.0.1:2019\n\temail %s\n}\n\n' "$email"
     else
@@ -245,14 +249,116 @@ cert_expire_date() {
     openssl x509 -in "$f" -noout -enddate 2>/dev/null | cut -d= -f2 | xargs -I{} date -d '{}' '+%Y-%m-%d' 2>/dev/null
 }
 
+# 用户态部署的 root 侧助手:只装/写/校验/重载 Caddy,不碰任何状态文件
+# (由普通用户的域名流程通过 sudo 调用;端口由用户侧按本实例传入)
+domain_root_configure() {
+    # 非 root 直接调用是常见误用(它本来就是给 sudo 用的):只提示,不触发 ERR 陷阱打断脚本
+    is_root || { err "domain-root 必须由 root 执行(它是用户态部署的 root 侧助手,由 sudo 调用)"; return 0; }
+    local domain="${1:-}"; shift || true
+    local port="$DASH_PORT" apiport="$API_PORT" email="" api_on="${API_ENABLED:-0}"
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --port)     port="${2:-}"; shift 2 || true ;;
+            --api-port) apiport="${2:-}"; shift 2 || true ;;
+            --email)    email="${2:-}"; shift 2 || true ;;
+            --api)      api_on="${2:-0}"; shift 2 || true ;;
+            *)          shift || true ;;
+        esac
+    done
+    [[ -n "$domain" ]] || { err "缺少域名"; return 1; }
+    [[ "$port" =~ ^[0-9]+$ && "$apiport" =~ ^[0-9]+$ ]] || { err "端口参数非法:$port / $apiport"; return 1; }
+    header "域名与反向代理(root 侧 → 127.0.0.1:$port)"
+    caddy_install || return 1
+    local content
+    content="$(HV_RENDER_DASH_PORT="$port" HV_RENDER_API_PORT="$apiport" caddy_render "$domain" "$email" "$api_on")"
+    caddy_validate "$content" || return 1
+    if [[ -f "$CADDYFILE" ]] && [[ "$(cat "$CADDYFILE")" == "$content" ]]; then
+        ok "Caddyfile 无变化"
+    else
+        [[ -f "$CADDYFILE" ]] && backup_file "$CADDYFILE"
+        printf '%s\n' "$content" >"$CADDYFILE" && chmod 644 "$CADDYFILE" && ok "已写入 $CADDYFILE"
+    fi
+    caddy_reload
+    port_listening 80 || warn "80 端口未监听(证书签发需要 80 可达,确认防火墙/安全组已放行)"
+    return 0
+}
+
+# 普通用户(用户态)下的域名流程:用户侧设 public_url 并重启面板(Host 校验是启动时快照),
+# 80/443 与证书由 root 侧助手完成 —— 绝不用"以 root 重跑整条命令"(那会跑成系统级、指错端口)
+domain_configure_usermode() {
+    hermes_installed || { warn "请先部署(菜单 1)"; pause; return 0; }
+    clear_screen
+    header "域名与反向代理(用户态 + root 侧 Caddy)"
+    local cur; cur="$(st_get DOMAIN)"
+    printf '    当前域名:%s%s%s\n' "$BD" "${cur:-未配置}" "$N"
+    dim "本实例面板端口:$DASH_PORT · API 端口:$API_PORT · 配置文件:$CADDYFILE"
+    local domain="${1:-}"
+    if [[ -z "$domain" ]]; then ask domain "域名(例:panel.example.com,回车跳过)" "$cur"; fi
+    if [[ -z "$domain" ]]; then info "未提供域名,跳过"; pause; return 0; fi
+    local email="${HV_ACME_EMAIL:-}"; [[ -n "$email" ]] || ask email "证书通知邮箱(可留空)" "$(st_get ACME_EMAIL)"
+
+    printf '\n'
+    dim "检查 DNS 解析…"
+    local rc=0; set +e; domain_points_here "$domain"; rc=$?; set -e
+    case "$rc" in
+        0) ok "解析正确,域名指向本机" ;;
+        1) warn "解析到别处或未解析:Let's Encrypt 无法签发(请把 A 记录指向本机公网 IP)" ;;
+        2) dim "无法确认解析(缺 getent/dig),继续尝试" ;;
+    esac
+
+    local api_on=0
+    if [[ "$(hcfg_get "platforms.api_server.enabled" 2>/dev/null)" == *true* ]]; then api_on=1; fi
+
+    # --- root 侧:装 Caddy、写配置(指向本实例端口)、热重载 ---
+    local rrc=0
+    info "配置 root 侧 Caddy(80/443 + 自动 HTTPS)…"
+    if is_root; then
+        domain_root_configure "$domain" --port "$DASH_PORT" --api-port "$API_PORT" --email "$email" --api "$api_on" || rrc=$?
+    elif have_sudo; then
+        sudo -n bash "$SELF" domain-root "$domain" --port "$DASH_PORT" --api-port "$API_PORT" --email "$email" --api "$api_on" || rrc=$?
+        if [[ $rrc -ne 0 ]]; then
+            warn "免密 sudo 不可用(需要输入密码)"
+            dim "请手动执行:sudo bash $SELF domain-root $domain --port $DASH_PORT --api-port $API_PORT"
+        fi
+    else
+        warn "系统里没有 sudo,无法配置 80/443 与证书"
+        dim "请让管理员执行:bash $SELF domain-root $domain --port $DASH_PORT"
+        rrc=1
+    fi
+
+    # --- 用户侧:公网地址 + 重启面板(官方面板在启动时读 public_url 决定接受哪些 Host)---
+    dashboard_webui "$domain"
+    info "重启面板以应用域名(Host 校验在启动时读取 public_url)…"
+    svc_ctl restart hermes-dashboard >/dev/null 2>&1 || true
+    dashboard_wait_ready >/dev/null 2>&1 || true
+    dashboard_ensure_host_ok >/dev/null 2>&1 || true
+
+    st_set DOMAIN "$domain"; st_set ACME_EMAIL "$email"; st_set API_ENABLED "$api_on"
+    if [[ $rrc -ne 0 ]]; then
+        warn "root 侧未完成:先解决上面的提示,再用相同的域名重跑本命令"
+        pause; return 1
+    fi
+    ok "HTTPS 已配置:https://${domain}/"
+    dim "首次签发约需 10~30 秒"
+    sleep 3
+    local code; code="$(curl -sS -m 15 -o /dev/null -w '%{http_code}' "https://${domain}/healthz" 2>/dev/null || echo 000)"
+    [[ "$code" == "200" ]] && ok "探活成功:https://${domain}/healthz → 200" || warn "探活返回 $code(证书可能还在签发,稍后重试)"
+    local lcode; lcode="$(curl -sS -m 15 -o /dev/null -w '%{http_code}' "https://${domain}/login?next=%2F" 2>/dev/null || echo 000)"
+    [[ "$lcode" == "200" ]] && ok "登录页可达:https://${domain}/login → 200(Host 校验通过)" || warn "登录页返回 $lcode"
+    credentials_write "$domain" 2>/dev/null || true
+    pause
+    return 0
+}
+
 domain_configure() {
-    if [[ "$HV_MODE" != "system" ]]; then escalate_or_skip "域名与反向代理(80/443 + 自动 HTTPS)" || true; return 0; fi
+    if [[ "$HV_MODE" != "system" ]]; then domain_configure_usermode "$@"; return $?; fi
     hermes_installed || { warn "请先部署(菜单 1)"; pause; return 1; }
     clear_screen
     header "域名与反向代理(Caddy)"
     local cur; cur="$(st_get DOMAIN)"
     printf '    当前域名:%s%s%s\n' "$BD" "${cur:-未配置}" "$N"
-    local domain; ask domain "域名(例:panel.example.com,回车跳过)" "$cur"
+    local domain="${1:-}"
+    if [[ -z "$domain" ]]; then ask domain "域名(例:panel.example.com,回车跳过)" "$cur"; fi
     if [[ -z "$domain" ]]; then info "未提供域名,跳过"; pause; return 0; fi
     local email; ask email "证书通知邮箱(可留空)" "$(st_get ACME_EMAIL)"
 
