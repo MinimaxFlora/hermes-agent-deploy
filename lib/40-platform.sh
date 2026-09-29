@@ -333,9 +333,11 @@ plat_menu() {
         rule
         printf '    编号 = 配置(输完凭据立即验证);  %sv<编号>%s = 验证连接;  %st<编号>%s = 发测试消息;  0) 返回\n' "$C" "$N" "$C" "$N"
         printf '    提示:%sQQ / 微信 都支持官方扫码上线;飞书/钉钉/TG 等填凭据即可%s\n' "$DM" "$N"
+        printf '    %sp%s = 配对审批(陌生人发消息被拦下时,在这里一键/自动放行)%s\n' "$C" "$N"
         local ch=""; menu_choice ch "请选择"
         case "$ch" in
             0|"") return 0 ;;
+            p|pairing|approve) pairing_menu ;;
             v*) plat_verify_menu "${ch#v}" ;;
             t*) plat_send_test "${ch#t}" ;;
             *) if [[ "$ch" =~ ^[0-9]+$ ]] && (( ch>=1 && ch<=${#PLATFORMS[@]} )); then
@@ -401,6 +403,16 @@ plat_configure() {
             *)         dim "网关日志暂未见 ${id} 的明确结论,下面给最近日志" ;;
         esac
         plat_show_log "$id"
+    fi
+    # 配对审批:平台默认「陌生人先申请、由你批准」。这里直接把待批准请求放行
+    # (原来要手工敲 hermes pairing approve <平台> <码>;现在脚本内自动完成)
+    if [[ -n "$(pairing_pending_rows)" ]]; then
+        if confirm "检测到 $(pairing_pending_count) 个待批准配对请求,现在自动放行?" yes; then
+            pairing_approve_all
+        fi
+    fi
+    if confirm "再自动监听 2 分钟(期间有人发消息就立刻放行)?" yes; then
+        pairing_watch 120
     fi
     pause
 }

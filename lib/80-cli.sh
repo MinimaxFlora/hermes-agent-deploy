@@ -19,6 +19,7 @@ usage() {
     install           一键部署(等价菜单 1)
     model             模型提供商配置(install 后可随时执行)
     platform          消息平台接入
+    pairing [动作]    配对审批:list|approve <平台> <码>|all|watch [秒]|pairing|open|closed
     domain <域名>     配置 Caddy + 自动 HTTPS
     panel             面板凭据/API 开关
     service <动作>    start|stop|restart|status|logs [gateway|dashboard|caddy]
@@ -83,6 +84,17 @@ main() {
         install|deploy) deploy_all ;;
         model) model_menu ;;
         platform|platforms) plat_menu ;;
+        pairing)
+            case "${1:-list}" in
+                list|"")        pairing_show ;;
+                approve)        pairing_approve_code "${2:-}" "${3:-}" ;;
+                all|approve-all) pairing_approve_all ;;
+                watch)          pairing_watch "${2:-180}" ;;
+                pairing|on)     pairing_policy_set pairing ;;
+                open)           pairing_policy_set open ;;
+                closed|off)     pairing_policy_set closed ;;
+                *) err "用法: pairing [list|approve <平台> <配对码>|all|watch [秒]|pairing|open|closed]"; exit 1 ;;
+            esac ;;
         domain) domain_configure ;;
         panel) panel_menu ;;
         service)

@@ -341,6 +341,21 @@ systemctl --user restart hermes-dashboard   # 使用者態(或用選單 6 重啟
 `hermes-vps diagnose` 會有一項「面板接受域名 Host(HTTP xxx)」,出現 400 就是這個原因。
 另外本工具**只以網域作為訪問地址**:`127.0.0.1` 在你的機器上訪問不到,因此不會出現在任何提示或憑證檔中(用 IP 直連也可能被面板的 Host 校驗拒絕)。
 
+### 微信/QQ 上機器人回 `Hi! I don't recognize you yet... Your pairing code: W6FFKXYC`
+
+這是平台的**配對(pairing)授權**:預設「陌生人先申請、由你批准」。腳本已內建支援,**不用手敲官方命令**:
+
+```bash
+hermes-vps pairing list                       # 看誰在申請
+hermes-vps pairing all                        # 一鍵放行全部待批准
+hermes-vps pairing watch 180                  # 自動放行:監聽 3 分鐘,有人發訊息就立刻批准
+hermes-vps pairing approve weixin W6FFKXYC    # 用對方發來的配對碼放行
+hermes-vps pairing open                       # 整體關閉配對(任何人可私聊,不建議)
+```
+
+選單裡也有:主選單 **3**(訊息平台)→ 輸入 **`p`** = 配對審批。
+另外:配置平台時若選了「配對審批」,連上後腳本會**自動偵測並放行**待批准請求,並可選監聽 2 分鐘。
+
 ## 🧰 開發者備忘:真機踩過的坑
 
 改這支腳本前值得一讀(全部來自真實部署):

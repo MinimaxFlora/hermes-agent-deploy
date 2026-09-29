@@ -339,6 +339,21 @@ systemctl --user restart hermes-dashboard   # 사용자 모드(메뉴 6 에서�
 `hermes-vps diagnose` 에 「面板接受域名 Host(HTTP xxx)」 항목이 있고, 400 이면 위가 원인입니다.
 이 도구는 **도메인만 접속 주소로 안내**합니다. `127.0.0.1` 은 사용자 쪽에서 도달할 수 없어 안내문이나 자격 증명 파일에 표시되지 않습니다(IP 직접 접속도 Host 검사에서 거부될 수 있습니다).
 
+### WeChat/QQ 에서 봇이 `Hi! I don't recognize you yet... Your pairing code: W6FFKXYC` 라고 답합니다
+
+플랫폼의 **페어링(pairing) 승인** 입니다(기본값: 모르는 사용자는 승인 필요). 스크립트에 내장되어 있어 공식 명령을 직접 칠 필요가 없습니다:
+
+```bash
+hermes-vps pairing list                       # 대기 중인 요청 보기
+hermes-vps pairing all                        # 대기 중 전부 승인
+hermes-vps pairing watch 180                  # 자동 승인: 3분 감시 후 도착 즉시 승인
+hermes-vps pairing approve weixin W6FFKXYC    # 봇이 보낸 코드로 승인
+hermes-vps pairing open                       # 페어링 자체 비활성화(누구나 DM, 비권장)
+```
+
+메뉴에서는 메인 메뉴 **3**(메신저 플랫폼) → **`p`** 가 페어링 승인입니다.
+또한 DM 정책에서 "페어링 승인"을 고르면 연결 직후 대기 중 요청을 **자동 감지해 승인**하고, 선택적으로 2분간 감시합니다.
+
 ## 🧰 개발자 메모: 실장비에서 밟은 함정
 
 이 스크립트를 수정하기 전에 읽어 볼 만합니다(모두 실제 배포에서 나온 것).

@@ -337,6 +337,21 @@ systemctl --user restart hermes-dashboard   # user mode (or restart from menu 6)
 `hermes-vps diagnose` includes a “panel accepts the domain Host (HTTP …)” line; a 400 there means exactly the above.
 This tool only presents the **domain** as the access address: `127.0.0.1` is unreachable from your machine, so it never appears in the prompts or the credentials file (raw-IP access can also be refused by the dashboard's Host check).
 
+### WeChat/QQ replies `Hi! I don't recognize you yet... Your pairing code: W6FFKXYC`
+
+That's the platform **pairing** gate: by default strangers must be approved. The script handles it, no manual official command needed:
+
+```bash
+hermes-vps pairing list                       # who is waiting
+hermes-vps pairing all                        # approve every pending request
+hermes-vps pairing watch 180                  # auto-approve: watch 3 min, approve as they arrive
+hermes-vps pairing approve weixin W6FFKXYC    # approve using the code the bot sent
+hermes-vps pairing open                       # disable pairing entirely (anyone can DM; not recommended)
+```
+
+In the menu: main menu **3** (platforms) → type **`p`** for pairing approval (list / approve all / auto-watch / enter code / policy).
+Also: when you configure a platform with the “pairing” DM policy, the script now **detects and approves** pending requests right after connecting, with an optional 2-minute watch.
+
 ## 🧰 Developer notes: pitfalls found on real machines
 
 Worth reading before editing this script (all from real deployments):
