@@ -83,19 +83,56 @@ have() { command -v "$1" >/dev/null 2>&1; }
 need_curl() { have curl || die "缺少 curl"; }
 
 json_tag() { # 从 GitHub API 响应里取第一个 tag_name(不依赖 jq)
-    grep -m1 '"tag_name"' | sed -E 's/.*"tag_name"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/'
+    # ⚠️ 必须把输入一次读完,不要命中就退出:
+    #    真机事故(2026-10-01,Debian 13 新机)就是这里用 `grep -m1 … | sed` 解析的 ——
+    #    grep 命中第一行后立刻退出,上游 curl 正往管道里写时收到 EPIPE(退出码 23),
+    #    脚本开着 `set -o pipefail`,整条管道被判失败,调用方的 `|| tag=""` 又把已经
+    #    解析出来的 tag 清空 → 报「无法获取最新版本」。响应小到一次能塞进管道缓冲区
+    #    (约 64K)时侥幸通过,所以表现为偶发:同一台机器同一条命令,前一次成功后一次失败。
+    awk '
+        !found && match($0, /"tag_name"[ \t]*:[ \t]*"[^"]+"/) {
+            s = substr($0, RSTART, RLENGTH)
+            sub(/.*"tag_name"[ \t]*:[ \t]*"/, "", s)
+            sub(/".*/, "", s) # 去掉匹配结尾的引号
+            print s
+            found = 1
+        }
+    '
+}
+
+latest_via_redirect() { # releases/latest 是 302,Location 里就带 tag —— 完全不碰 api.github.com
+    local url="https://github.com/${REPO}/releases/latest" u=""
+    # 先 HEAD(最省流量);个别网关/代理对 HEAD 不回 302,再跟随一次取最终地址
+    u="$(curl -fsSI --max-time 15 -o /dev/null -w '%{redirect_url}' "$url" 2>/dev/null || true)"
+    case "$u" in */releases/tag/*) printf '%s' "${u##*/releases/tag/}"; return 0 ;; esac
+    u="$(curl -fsSL --max-time 25 -o /dev/null -w '%{url_effective}' "$url" 2>/dev/null || true)"
+    case "$u" in */releases/tag/*) printf '%s' "${u##*/releases/tag/}"; return 0 ;; esac
+    return 0 # 取不到就输出空,由调用方判断(不要在这里失败,否则 set -e 会直接退出)
 }
 
 resolve_version() {
     if [[ -n "$WANT_VERSION" ]]; then printf '%s' "$WANT_VERSION"; return 0; fi
-    local tag=""
-    tag="$(curl -fsSL --max-time 20 "${API}/latest" 2>/dev/null | json_tag)" || tag=""
+    local tag="" body=""
+
+    # 1) 首选不打 API:安装包本来就从 github.com 下载,这条通就一定能装上;
+    #    而 api.github.com 可能被墙、或对机房共享出口 IP 限流(403)。
+    tag="$(latest_via_redirect)"
+    case "$tag" in
+        ""|*/*) tag="" ;; # 带斜杠说明 tag 被 URL 结构弄脏,交给下面的 API 兜底
+    esac
+
     if [[ -z "$tag" ]]; then
-        info "latest 接口不可用,改用 release 列表"
-        tag="$(curl -fsSL --max-time 20 "${API}?per_page=20" 2>/dev/null | json_tag)" || tag=""
+        info "releases/latest 跳转取不到,改用 GitHub API"
+        body="$(curl -fsSL --max-time 20 "${API}/latest" 2>/dev/null || true)"
+        tag="$(printf '%s' "$body" | json_tag || true)"
     fi
     if [[ -z "$tag" ]]; then
-        die "无法获取最新版本(检查网络,或用 --version vX.Y.Z 指定)"
+        info "latest 接口不可用,改用 release 列表"
+        body="$(curl -fsSL --max-time 20 "${API}?per_page=20" 2>/dev/null || true)"
+        tag="$(printf '%s' "$body" | json_tag || true)"
+    fi
+    if [[ -z "$tag" ]]; then
+        die "无法获取最新版本:github.com 与 api.github.com 都没取到(检查网络/代理;或用 --version 指定版本,如 bash -s -- --version v1.0.20)"
     fi
     printf '%s' "$tag"
 }
@@ -201,4 +238,5 @@ main() {
     printf '\n'
 }
 
-main
+# 测试可以 HV_INSTALL_LIB=1 只加载函数,不执行 main(见 tests/installer-resolve.sh)
+[[ "${HV_INSTALL_LIB:-0}" == "1" ]] || main

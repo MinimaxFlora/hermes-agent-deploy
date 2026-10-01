@@ -29,6 +29,9 @@ jobs:
       - name: 冒烟测试 smoke
         run: bash tests/smoke.sh
 
+      - name: 安装器版本解析回归(离线,假 curl)
+        run: bash tests/installer-resolve.sh
+
       - name: 严格模式回归 strict
         run: bash tests/strict.sh
 

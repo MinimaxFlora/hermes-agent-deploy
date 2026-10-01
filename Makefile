@@ -19,6 +19,9 @@ lint: ## 静态检查
 smoke: ## 纯逻辑冒烟
 	bash tests/smoke.sh
 
+installer: ## 安装器版本解析离线回归(假 curl,不联网)
+	bash tests/installer-resolve.sh
+
 strict: ## 严格模式回归
 	bash tests/strict.sh
 
@@ -28,7 +31,7 @@ caddy: ## 真实 caddy 校验(需 HV_CADDY_BIN 或 PATH 里有 caddy)
 caddy-routing: ## 路由行为测试(需 Linux + caddy + python3)
 	bash tests/caddy-routing.sh
 
-test: lint smoke strict caddy ## 本地全套(不含需要真机/内核能力的用例)
+test: lint installer smoke strict caddy ## 本地全套(不含需要真机/内核能力的用例)
 
 accept: build ## 真机验收(在已部署的 VPS 上以 root 执行)
 	bash tests/acceptance.sh
