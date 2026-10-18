@@ -231,7 +231,7 @@ main() {
         printf '    %s把 %s 加入 PATH,然后运行 hermes-vps%s\n' "$C_DIM" "$dest" "$C_N"
     fi
     if [[ "$(id -u)" -eq 0 ]]; then
-        printf '    %s当前是 root:直接部署即系统级(专用服务用户 + 系统服务 + 域名 HTTPS)%s\n' "$C_DIM" "$C_N"
+        printf '    %s当前是 root:默认 Docker Compose(官方镜像)+ Caddy 域名 HTTPS%s\n' "$C_DIM" "$C_N"
     else
         printf '    %s当前是普通用户:直接用即可走用户态(全部落在 $HOME)%s\n' "$C_DIM" "$C_N"
         printf '    %s需要域名/HTTPS(80/443)、防火墙等系统级能力时,再用 sudo hermes-vps%s\n' "$C_DIM" "$C_N"
