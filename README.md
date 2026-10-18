@@ -46,7 +46,7 @@
 | 💬 **平台接入同样要过官方 API 验票** | QQ 换 `access_token`、飞书换 `tenant_access_token`、Telegram `getMe`、Discord `users/@me`、Slack `auth.test`、Matrix `account/whoami` —— 厂商自己说“认”，才算通。 |
 | 📱 **二维码直接出在脚本里** | QQ / 微信扫码授权走官方适配器函数，二维码打印在终端（Docker 模式在容器内执行同一套官方代码）。 |
 | 🛡 **默认就是安全姿势** | 容器内以 UID 10000 运行；数据目录 `/opt/hermes/.hermes` 属主同步；Compose 文件 0600；凭据文件 0600；Caddyfile 校验通过才 reload。 |
-| 🇨🇳 **为国内网络准备** | 自动测速 GitHub / PyPI 通道；镜像可选 Docker Hub 或 GHCR，并提示 registry mirror。 |
+| 🇨🇳 **为国内网络准备** | Docker Engine 由 Docker_Private_Source 的国内镜像源安装；Hermes 镜像可选 Docker Hub 或 GHCR，并提示 registry mirror。 |
 | 🩺 **自检与可回滚** | 服务、端口、认证门、API 鉴权、证书、凭据权限、平台连接、备份逐项检查；更新前自动备份。 |
 | 🌏 **文档五语** | 简体中文 / English / 繁體中文 / 日本語 / 한국어。 |
 
@@ -118,7 +118,7 @@ sudo hermes-vps
   ╭──────────────────────────────────────────────────────────────────────────╮
   │  Hermes Agent · VPS 一键部署与管理                                       │
   │  模型 / QQ / 微信 / 域名 HTTPS / 自检备份                                │
-  │  v1.2.3  ·  Debian GNU/Linux 13 (trixie) x86_64  ·  2C / 967MB           │
+  │  v1.2.4  ·  Debian GNU/Linux 13 (trixie) x86_64  ·  2C / 967MB           │
   ╰──────────────────────────────────────────────────────────────────────────╯
 
   运行状态 ──────────────────────────────────────────────────────────────
@@ -143,9 +143,8 @@ sudo hermes-vps
      8) 备份与恢复                打包配置与密钥,可一键回滚
      9) 更新                      拉新镜像(可选更新 Docker Engine)/ 自动检查
     10) 防火墙与安全              只放行 SSH / 80 / 443
-    11) 网络加速探测              GitHub / PyPI 国内镜像自动选优
-    12) 使用说明 / 帮助           常用命令与路径
-    13) 卸载                      逐项确认,绝不静默批量删
+    11) 使用说明 / 帮助           常用命令与路径
+    12) 卸载                      逐项确认,绝不静默批量删
   ──────────────────────────────────────────────────────────────────────────
      0) 退出
 ```
@@ -169,9 +168,8 @@ sudo hermes-vps
 | 9 更新 | `update` / `update auto-update on\|off` | 拉取新镜像并重建容器；可选同时更新 Docker Engine；更新前自动备份 |
 | — | `engine version\|update` | 查看 / 按 Docker_Private_Source 版本化 Release 升级 Docker Engine |
 | 10 防火墙 | `firewall` | 只**增加**放行，绝不动既有规则 |
-| 11 网络加速 | `mirror --force` | 重新测速并应用 |
-| 12 帮助 | `help` | 命令与路径速查 |
-| 13 卸载 | `uninstall` | 先列精确路径，再逐条确认 |
+| 11 帮助 | `help` | 命令与路径速查 |
+| 12 卸载 | `uninstall` | 先列精确路径，再逐条确认 |
 | — | `selftest` | 检查脚本自身（语法/数据表/Compose 渲染/Caddyfile） |
 | — | `self-install` | 把自己装到 `/usr/local/bin/hermes-vps` |
 
@@ -264,7 +262,6 @@ lib/11-state.sh        键值存储 / 状态 / 凭据
 lib/12-run.sh          以用户身份 / 容器内执行
 lib/13-docker.sh       Docker Engine / Compose / 镜像与服务控制
 lib/20-system.sh       发行版探测 / 依赖 / swap 保护
-lib/21-mirror.sh       网络加速（GitHub / PyPI 测速选优）
 lib/22-firewall.sh     防火墙（只增不减）
 lib/23-probe.sh        通用探测（端口 / 服务 / 公网 IP / 域名解析）
 lib/30-hermes.sh       Docker 部署 / 镜像与 Docker Engine 更新
@@ -287,7 +284,7 @@ install.sh             从 Release 安装 / 升级（自动取最新版 + sha256
 tests/                 lint / smoke / strict / docker / 真实 caddy 校验 / 路由 / 真机验收
 ```
 
-**发布流程**：改 `VERSION` → 打 tag `v1.2.3` → Actions 跑全量测试、构建 `hermes-vps.sh`、生成 `.sha256` 并创建 Release。用户端只跑 `install.sh`，永远拿到同一份自包含脚本。
+**发布流程**：改 `VERSION` → 打 tag `v1.2.4` → Actions 跑全量测试、构建 `hermes-vps.sh`、生成 `.sha256` 并创建 Release。用户端只跑 `install.sh`，永远拿到同一份自包含脚本。
 
 | 路径 | 内容 |
 |---|---|
@@ -307,7 +304,7 @@ tests/                 lint / smoke / strict / docker / 真实 caddy 校验 / �
 
 | 验收项 | 结果 |
 |---|---|
-| 静态检查 `tests/lint.sh` | 52 项全通过（语法 / 数据表 / 构建可复现） |
+| 静态检查 `tests/lint.sh` | 51 项全通过（语法 / 数据表 / 构建可复现） |
 | 冒烟 `tests/smoke.sh` | 64 项全通过 |
 | 严格模式 `tests/strict.sh` | 15 项全通过（`set -Eeuo pipefail` 下原语不中止） |
 | Docker 后端 `tests/docker.sh` | 20 项全通过（镜像地址 / Compose 渲染 / 模型目录 / 后端固定 Docker） |
@@ -322,7 +319,7 @@ tests/                 lint / smoke / strict / docker / 真实 caddy 校验 / �
 ## 🛠 常见问题
 
 **镜像拉取慢 / 失败？**
-部署时可选择 GHCR（`ghcr.io/minimaxflora/hermes-agent`）；国内机器也可先给 Docker 配置 registry mirror。Docker Hub 与 GHCR 的内容和 digest 一致。
+部署时可选择 GHCR（`ghcr.io/minimaxflora/hermes-agent`）；国内机器也可先给 Docker 配置 registry mirror。Docker Hub 与 GHCR 的内容和 digest 一致。新版本在拉取失败时会**自动重试 2 次**，仍失败则自动切换另一个 Registry 并更新 Compose。
 
 **1GB 小内存机器部署到一半被断开？**
 这是没有 swap 时被内核 OOM 杀掉。当前版本会在**第 1 步**检测内存：低于 1.8GB 且无 swap 时自动创建 2GB `/swapfile`，不再等待确认。磁盘不足时会自动降低 swap 大小；仍建议 VPS 至少 2GB 内存。也可以手动设置 `SWAP_MB=4096` 或 `NO_SWAP=1`。

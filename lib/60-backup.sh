@@ -36,7 +36,6 @@ backup_create() {
     local staged; staged="$(mktemp -d)"
     install -d "$staged/etc" "$staged/systemd" 2>/dev/null || true
     [[ -f "$STATE_FILE" ]] && cp -p "$STATE_FILE" "$staged/etc/" 2>/dev/null || true
-    [[ -f "$MIRROR_FILE" ]] && cp -p "$MIRROR_FILE" "$staged/etc/" 2>/dev/null || true
     [[ -f "$CRED_FILE" ]] && cp -p "$CRED_FILE" "$staged/etc/" 2>/dev/null || true
     [[ -f "$CADDYFILE" ]] && cp -p "$CADDYFILE" "$staged/etc/Caddyfile" 2>/dev/null || true
     [[ -f "$COMPOSE_FILE" ]] && cp -p "$COMPOSE_FILE" "$staged/etc/docker-compose.yml" 2>/dev/null || true

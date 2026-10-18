@@ -164,7 +164,7 @@ Source modules: `lib/13-docker.sh` (engine/Compose/image/service control), `lib/
 
 ## FAQ
 
-**Image pull is slow.** Use GHCR (`ghcr.io/minimaxflora/hermes-agent`) or configure a Docker registry mirror.
+**Image pull is slow.** Use GHCR (`ghcr.io/minimaxflora/hermes-agent`) or configure a Docker registry mirror. The tool now retries twice and automatically switches to the other registry (updating Compose) if the pull still fails.
 
 **Deployment dies on a 1 GB VPS.** That is the OOM killer with no swap. The current
 version creates a 2 GB `/swapfile` automatically in step 1 when RAM is below 1.8 GB

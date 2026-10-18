@@ -168,9 +168,8 @@ main_menu() {
         else
             menu_item 10 "防火墙与安全"       "需要 root:普通用户可提权执行"
         fi
-        menu_item 11 "网络加速探测"       "GitHub / PyPI 国内镜像自动选优"
-        menu_item 12 "使用说明 / 帮助"    "常用命令与路径"
-        menu_item 13 "卸载"               "逐项确认,绝不静默批量删"
+        menu_item 11 "使用说明 / 帮助"    "常用命令与路径"
+        menu_item 12 "卸载"               "逐项确认,绝不静默批量删"
         rule
         menu_item 0 "退出" ""
         rule
@@ -186,9 +185,8 @@ main_menu() {
             8) backup_menu ;;
             9) update_menu ;;
             10) firewall_setup; pause ;;
-            11) mirror_probe 1; mirror_apply_user; pause ;;
-            12) show_help ;;
-            13) uninstall_run ;;
+            11) show_help ;;
+            12) uninstall_run ;;
             0|q|exit|quit) printf '\n  %s再见 👋%s\n\n' "$C" "$N"; return 0 ;;
             "") if [[ "${HV_EOF:-0}" == "1" || ! -t 0 ]]; then printf '\n  %s输入已结束,退出。%s\n\n' "$C" "$N"; return 0; fi ;;
             *) warn "无效编号:$ch"; sleep 1 ;;

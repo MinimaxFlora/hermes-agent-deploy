@@ -62,7 +62,6 @@ else
     CADDY_BIN="${HV_CADDY_BIN:-$USER_HOME/.local/bin/caddy}"
 fi
 STATE_FILE="$ETC_DIR/state.env"
-MIRROR_FILE="$ETC_DIR/mirror.env"
 CRED_FILE="$ETC_DIR/credentials.txt"
 COMPOSE_FILE="$ETC_DIR/docker-compose.yml"
 UHOME="${HV_HERMES_HOME:-$HHOME/.hermes}"      # HERMES_HOME

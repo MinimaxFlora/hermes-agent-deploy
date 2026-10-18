@@ -27,7 +27,6 @@ usage() {
     update            更新 Hermes;auto-update on|off|status
     engine <动作>      Docker Engine:version|update(按版本化 Release 升级)
     firewall          配置防火墙
-    mirror [--force]  探测并应用国内加速通道
     uninstall         卸载(逐项确认)
     selftest          自检脚本自身(语法/数据表/渲染)
     self-install      把自己装成命令(系统级 /usr/local/bin,用户态 ~/.local/bin)
@@ -74,7 +73,6 @@ main() {
         help|-h|--help|version|-V|--version|mode|--mode|selftest) : ;;
         *) state_init ;;
     esac
-    load_mirror_env
     backend_init
     # 生效端口:用户态撞端口时 ensure_free_ports 会把新端口记进 state,这里读回来
     DASH_PORT="$(st_get DASH_PORT "$DASH_PORT")"
@@ -149,7 +147,6 @@ main() {
                 *) err "用法: engine [version|update]"; exit 1 ;;
             esac ;;
         firewall) firewall_setup ;;
-        mirror) mirror_probe "${1:+--force}"; mirror_apply_user; mirror_show ;;
         uninstall) uninstall_run ;;
         selftest) selftest ;;
         self-install|selfinstall)
@@ -171,13 +168,4 @@ main() {
             fi ;;
         *) err "未知命令:$cmd"; usage; exit 1 ;;
     esac
-}
-
-load_mirror_env() {
-    [[ -f "$MIRROR_FILE" ]] || return 0
-    set +u
-    # shellcheck disable=SC1090
-    . "$MIRROR_FILE" 2>/dev/null || true
-    set -u
-    return 0
 }

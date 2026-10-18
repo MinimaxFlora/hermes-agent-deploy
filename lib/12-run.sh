@@ -9,13 +9,6 @@ run_as_user_env() { # run_as_user_env <user> [KEY=VAL…] -- cmd args…
     local extra=()
     while [[ $# -gt 0 && "$1" != "--" ]]; do extra+=("$1"); shift; done
     [[ "${1:-}" == "--" ]] && shift
-    if [[ -f "$MIRROR_FILE" ]]; then
-        local k v
-        while IFS='=' read -r k v; do
-            [[ -z "$k" || "$k" == \#* ]] && continue
-            env_args+=("$k=$v")
-        done <"$MIRROR_FILE"
-    fi
     env_args+=("${extra[@]}")
     # 切用户后必须落在"该用户自己的家目录"里执行,否则会继承调用者的 cwd(常见是 /root,
     # 权限 700,目标用户读不了)→ 官方安装脚本内部的 find 报

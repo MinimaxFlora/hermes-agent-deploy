@@ -64,8 +64,7 @@ deploy_all() {
     confirm "现在接入消息平台(QQ/微信等)(稍后可做)?" no && want_platform=1 || want_platform=0
     confirm "开始部署?" yes || { info "已取消"; pause; return 0; }
 
-    local total=8 n=0
-    [[ "$HV_MODE" == "system" ]] && total=10
+    local total=9 n=0
     progress() { n=$((n+1)); printf '\n  %s[%d/%d] %s%s\n' "$BD$C" "$n" "$total" "$*" "$N"; }
 
     progress "内存保护(小内存自动补 swap)"
@@ -73,10 +72,6 @@ deploy_all() {
 
     progress "系统与依赖"
     deps_install
-
-    progress "网络加速探测(GitHub / PyPI)"
-    mirror_probe || warn "未找到可用加速通道,继续用直连"
-    mirror_apply_user
 
     if docker_backend; then
         progress "准备数据目录"

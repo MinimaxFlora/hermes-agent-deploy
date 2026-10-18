@@ -248,16 +248,51 @@ docker_compose_write() {
 }
 
 docker_pull_image() {
-    local image; image="$(docker_image_ref)"
+    local image alt source tag attempt
+    image="$(docker_image_ref)"
     step "拉取镜像 $image"
-    if ! docker pull "$image"; then
-        err "镜像拉取失败:$image"
-        dim "国内 VPS 可改用 GHCR(部署时选择 2),或配置 Docker registry mirror"
-        dim "也可用 --image 指定其他镜像(例如自建 registry)"
-        return 1
+
+    # 网络抖动/Docker Hub 限流时先重试;仍失败则自动切换另一个 Registry
+    for attempt in 1 2; do
+        if docker pull "$image"; then
+            ok "镜像已就绪"
+            return 0
+        fi
+        warn "第 ${attempt} 次拉取失败,3 秒后重试"
+        sleep 3
+    done
+
+    if [[ "$image" != *"@"* ]]; then
+        tag="${image##*:}"
+        case "$image" in
+            "${DOCKER_IMAGE_DOCKERHUB}":*)
+                alt="${DOCKER_IMAGE_GHCR}:${tag}"
+                source="ghcr"
+                ;;
+            "${DOCKER_IMAGE_GHCR}":*)
+                alt="${DOCKER_IMAGE_DOCKERHUB}:${tag}"
+                source="dockerhub"
+                ;;
+            *) alt="" ;;
+        esac
+
+        if [[ -n "$alt" ]]; then
+            warn "当前 Registry 连接失败,自动尝试另一个源:$alt"
+            if docker pull "$alt"; then
+                st_set IMAGE_SOURCE "$source"
+                st_set IMAGE_REF "$alt"
+                docker_compose_write >/dev/null 2>&1 || true
+                ok "已切换到 ${source},并更新 Compose 镜像"
+                return 0
+            fi
+            err "备用源也拉取失败:$alt"
+        fi
     fi
-    ok "镜像已就绪"
-    return 0
+
+    err "镜像拉取失败:$image"
+    dim "可手动测试:curl -I https://registry-1.docker.io/v2/ 与 curl -I https://ghcr.io/v2/"
+    dim "也可用 --image 指定自建 registry / mirror 镜像"
+    return 1
 }
 
 docker_compose_up() {
