@@ -75,7 +75,12 @@ deps_install() {
         pacman) pkgs=(curl git tar xz openssl ca-certificates jq unzip gnupg) ;;
     esac
     step "安装基础依赖"
-    [[ ${#pkgs[@]} -gt 0 ]] && pkg_install "${pkgs[@]}" || true
+    if [[ ${#pkgs[@]} -gt 0 ]]; then
+        if ! pkg_install "${pkgs[@]}"; then
+            warn "系统包安装失败(可能是内存不足或软件源不可用),继续检查已有命令"
+            dim "可手动执行:apt-get update && apt-get install -y ${pkgs[*]}"
+        fi
+    fi
     local c
     for c in curl git tar openssl; do have "$c" || die "缺少命令 $c,请手工安装后重试"; done
     if ! ldconfig -p 2>/dev/null | grep -q "libatomic\.so\.1"; then
@@ -94,27 +99,62 @@ browser_libs_install() {
     return 0
 }
 
-# 小内存保护:1GB 机器装 Python/打包前端会被 OOM killer 杀掉
+# 小内存保护:1GB 机器装依赖/解压镜像会被 OOM killer 杀掉
 swap_total_mb() { awk '/SwapTotal/{printf "%d", $2/1024}' /proc/meminfo 2>/dev/null || echo 0; }
+swap_active() { swapon --show=NAME --noheadings 2>/dev/null | grep -qx '/swapfile'; }
 ensure_swap() {
     if [[ "$HV_MODE" != "system" ]]; then
         [[ "${MEM_MB:-0}" -lt 1800 ]] && dim "用户态:补 swap 需要 root,已跳过(小内存机器建议让管理员加 swap)"
         return 0
     fi
     require_root "创建 swap 文件"
-    local want="${SWAP_MB:-2048}" have_mb
+    local want="${SWAP_MB:-2048}" have_mb free_mb
     have_mb="$(swap_total_mb)"
     if [[ "${MEM_MB:-0}" -ge 1800 ]]; then info "内存 ${MEM_MB}MB,无需补充 swap"; return 0; fi
     if [[ "$have_mb" -ge 512 ]]; then info "已有 swap ${have_mb}MB,跳过"; return 0; fi
-    warn "内存仅 ${MEM_MB}MB 且无 swap:安装时容易 OOM(会被内核直接杀掉)"
-    confirm "创建 ${want}MB swapfile 以避免安装中断?" yes || { warn "已跳过,若安装中途失败请看 dmesg | grep -i oom-kill"; return 0; }
-    if [[ -e /swapfile ]]; then swapon /swapfile 2>/dev/null || warn "swapon /swapfile 失败"
-    else
-        fallocate -l "${want}M" /swapfile 2>/dev/null || dd if=/dev/zero of=/swapfile bs=1M count="$want" status=none
-        chmod 600 /swapfile; mkswap /swapfile >/dev/null
-        swapon /swapfile || { err "swapon 失败"; rm -f /swapfile; return 1; }
+    if [[ "${NO_SWAP:-0}" == "1" ]]; then
+        warn "已按 NO_SWAP=1 跳过 swap(小内存机器可能 OOM)"
+        return 0
+    fi
+
+    # 小内存机器默认自动创建,不再等待用户确认(否则还没走到这一步就被 OOM 杀了)
+    warn "内存仅 ${MEM_MB}MB 且无 swap:先自动创建 ${want}MB swapfile,避免安装中途被内核杀掉"
+    free_mb="$(df -Pm / 2>/dev/null | awk 'NR==2{print $4}')" || free_mb=0
+    [[ -z "$free_mb" ]] && free_mb=0
+    if [[ "$free_mb" -lt $((want + 512)) ]]; then
+        want=$((free_mb - 256))
+        if [[ "$want" -lt 512 ]]; then
+            err "磁盘剩余不足(可用 ${free_mb}MB),无法创建 swapfile"
+            return 1
+        fi
+        warn "磁盘剩余 ${free_mb}MB,swap 降为 ${want}MB"
+    fi
+
+    if swap_active; then
+        ok "swap 已启用:${have_mb}MB"
+        return 0
+    fi
+
+    # 已有 /swapfile 但没启用:先尝试启用,失败则重建
+    if [[ -e /swapfile ]]; then
+        if swapon /swapfile 2>/dev/null; then
+            ok "已启用现有 /swapfile"
+        else
+            swapoff /swapfile 2>/dev/null || true
+            rm -f /swapfile
+        fi
+    fi
+
+    if [[ ! -e /swapfile ]]; then
+        if ! fallocate -l "${want}M" /swapfile 2>/dev/null; then
+            dd if=/dev/zero of=/swapfile bs=1M count="$want" status=none || { err "创建 swapfile 失败"; rm -f /swapfile; return 1; }
+        fi
+        chmod 600 /swapfile
+        mkswap /swapfile >/dev/null 2>&1 || { err "mkswap 失败"; rm -f /swapfile; return 1; }
+        swapon /swapfile || { err "swapon 失败"; return 1; }
         ok "已启用 ${want}MB swap"
     fi
     grep -q '^/swapfile' /etc/fstab 2>/dev/null || printf '/swapfile none swap sw 0 0\n' >>/etc/fstab
+    [[ "${MEM_MB:-0}" -lt 1200 ]] && dim "1GB 机器运行 Docker 镜像会偏慢;swap 已作为兜底"
     return 0
 }

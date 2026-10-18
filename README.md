@@ -105,7 +105,7 @@ sudo hermes-vps
 |---|---|
 | 系统 | Debian 10+ / Ubuntu 20.04+（amd64 / arm64） |
 | 权限 | root（Docker 部署；普通用户请用 `sudo`） |
-| 内存 | ≥ 1GB；镜像运行本身比本地编译省内存 |
+| 内存 | ≥ 1GB；低于 1.8GB 且无 swap 时，部署开始会自动创建 2GB `/swapfile` |
 | 磁盘 | ≥ 5GB 可用（镜像解压后约 3GB，另留数据与备份） |
 | 域名 | 要 `https://域名` 访问需 A 记录指向本机公网 IP，并放通 80/443 |
 | 网络 | 直连或受限都能用；Docker Hub 慢可切 GHCR 或配置 registry mirror |
@@ -118,7 +118,7 @@ sudo hermes-vps
   ╭──────────────────────────────────────────────────────────────────────────╮
   │  Hermes Agent · VPS 一键部署与管理                                       │
   │  模型 / QQ / 微信 / 域名 HTTPS / 自检备份                                │
-  │  v1.2.2  ·  Debian GNU/Linux 13 (trixie) x86_64  ·  2C / 967MB           │
+  │  v1.2.3  ·  Debian GNU/Linux 13 (trixie) x86_64  ·  2C / 967MB           │
   ╰──────────────────────────────────────────────────────────────────────────╯
 
   运行状态 ──────────────────────────────────────────────────────────────
@@ -287,7 +287,7 @@ install.sh             从 Release 安装 / 升级（自动取最新版 + sha256
 tests/                 lint / smoke / strict / docker / 真实 caddy 校验 / 路由 / 真机验收
 ```
 
-**发布流程**：改 `VERSION` → 打 tag `v1.2.2` → Actions 跑全量测试、构建 `hermes-vps.sh`、生成 `.sha256` 并创建 Release。用户端只跑 `install.sh`，永远拿到同一份自包含脚本。
+**发布流程**：改 `VERSION` → 打 tag `v1.2.3` → Actions 跑全量测试、构建 `hermes-vps.sh`、生成 `.sha256` 并创建 Release。用户端只跑 `install.sh`，永远拿到同一份自包含脚本。
 
 | 路径 | 内容 |
 |---|---|
@@ -323,6 +323,9 @@ tests/                 lint / smoke / strict / docker / 真实 caddy 校验 / �
 
 **镜像拉取慢 / 失败？**
 部署时可选择 GHCR（`ghcr.io/minimaxflora/hermes-agent`）；国内机器也可先给 Docker 配置 registry mirror。Docker Hub 与 GHCR 的内容和 digest 一致。
+
+**1GB 小内存机器部署到一半被断开？**
+这是没有 swap 时被内核 OOM 杀掉。当前版本会在**第 1 步**检测内存：低于 1.8GB 且无 swap 时自动创建 2GB `/swapfile`，不再等待确认。磁盘不足时会自动降低 swap 大小；仍建议 VPS 至少 2GB 内存。也可以手动设置 `SWAP_MB=4096` 或 `NO_SWAP=1`。
 
 **怎么固定版本？**
 部署时镜像标签填版本号（如 `v0.22.2`），或 `hermes-vps install --image dockorae/hermes-agent:v0.22.2`。`latest` 会随新版本移动。

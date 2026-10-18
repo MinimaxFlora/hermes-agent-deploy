@@ -83,7 +83,7 @@ Takes roughly 3–10 minutes, mostly pulling the ~1 GB image.
 |---|---|
 | OS | Debian 10+ / Ubuntu 20.04+ (amd64 / arm64) |
 | Privileges | root (use `sudo`; deployment is Docker-only) |
-| RAM | ≥ 1 GB |
+| RAM | ≥ 1 GB; below 1.8 GB without swap, a 2 GB `/swapfile` is created automatically |
 | Disk | ≥ 5 GB free (image ≈ 3 GB unpacked, plus data and backups) |
 | Domain | A record pointing at the VPS, ports 80/443 reachable |
 | Network | Docker Hub slow? choose GHCR or configure a registry mirror |
@@ -166,7 +166,11 @@ Source modules: `lib/13-docker.sh` (engine/Compose/image/service control), `lib/
 
 **Image pull is slow.** Use GHCR (`ghcr.io/minimaxflora/hermes-agent`) or configure a Docker registry mirror.
 
-**Pin a version.** Set the image tag during deployment, or `hermes-vps install --image dockorae/hermes-agent:0.22.2`.
+**Deployment dies on a 1 GB VPS.** That is the OOM killer with no swap. The current
+version creates a 2 GB `/swapfile` automatically in step 1 when RAM is below 1.8 GB
+and no swap exists. You can override with `SWAP_MB=4096` or skip with `NO_SWAP=1`.
+
+**Pin a version.** Set the image tag during deployment, or `hermes-vps install --image dockorae/hermes-agent:v0.22.2`.
 
 **Existing native install.** Not adopted. Stop the native services, then
 `sudo hermes-vps install`; `/opt/hermes/.hermes` is reused.

@@ -68,13 +68,11 @@ deploy_all() {
     [[ "$HV_MODE" == "system" ]] && total=10
     progress() { n=$((n+1)); printf '\n  %s[%d/%d] %s%s\n' "$BD$C" "$n" "$total" "$*" "$N"; }
 
+    progress "内存保护(小内存自动补 swap)"
+    ensure_swap || warn "swap 步骤失败,继续(小内存机器可能 OOM)"
+
     progress "系统与依赖"
     deps_install
-
-    if [[ "$HV_MODE" == "system" ]]; then
-        progress "内存保护(小内存自动补 swap)"
-        ensure_swap || warn "swap 步骤失败,继续"
-    fi
 
     progress "网络加速探测(GitHub / PyPI)"
     mirror_probe || warn "未找到可用加速通道,继续用直连"
