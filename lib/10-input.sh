@@ -16,11 +16,44 @@ ask() { # ask <变量名> <提示> [默认值]
     [[ -z "$val" ]] && val="$def"
     printf -v "$__v" '%s' "$val"
 }
-ask_secret() { # 隐藏输入
+# 逐字符读取并回显 *:终端里能看见"已经输入了多少",但看不到内容
+_read_masked() { # _read_masked <变量名>
+    local __out="" ch=""
+    stty -echo 2>/dev/null || true
+    trap 'stty echo 2>/dev/null || true; printf "\n"' INT TERM
+    while IFS= read -rsn1 ch; do
+        case "$ch" in
+            $'\n'|$'\r'|'') break ;;
+            $'\x7f'|$'\b')
+                if [[ -n "$__out" ]]; then
+                    __out="${__out%?}"
+                    printf '\b \b'
+                fi
+                ;;
+            $'\x03') # Ctrl-C
+                stty echo 2>/dev/null || true
+                printf '\n'
+                trap - INT TERM
+                exit 130
+                ;;
+            *)
+                __out+="$ch"
+                printf '*'
+                ;;
+        esac
+    done || true
+    stty echo 2>/dev/null || true
+    trap - INT TERM
+    printf -v "$1" '%s' "$__out"
+    return 0
+}
+
+ask_secret() { # 隐藏输入,但用 * 回显输入长度
     local __v="$1" prompt="$2" val=""
     if interactive; then
         printf '  %s%s%s: ' "$BD" "$prompt" "$N"
-        read -r -s val || true; printf '\n'
+        _read_masked val
+        printf '\n'
     fi
     printf -v "$__v" '%s' "$val"
 }

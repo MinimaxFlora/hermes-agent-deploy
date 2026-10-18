@@ -7,9 +7,9 @@ usage() {
   Hermes Agent · VPS 一键部署与管理  v$V
 
   运行模式(自动识别,无需参数):
-    root        系统级:专用服务用户 hermes、systemd 系统服务、/etc 配置、Caddy 80/443
-    普通用户    用户态:全部落在 $HOME,服务用 systemd --user(不可用时后台进程),
-                需要特权的功能(域名/HTTPS、防火墙)会提示用 sudo 重新执行
+    root        Docker Compose(默认):官方镜像 + 主机 Caddy;数据在 /opt/hermes/.hermes
+                也可用 --native 改为原地安装(兼容旧实例)
+    普通用户    用户态原生安装:全部落在 $HOME;需要特权的功能会提示用 sudo 重新执行
 
   用法:
     bash ${SELF##*/}                 打开交互菜单(推荐)
@@ -38,7 +38,10 @@ usage() {
     -y, --yes            全部确认自动回答“是”
     --non-interactive    非交互(不提问,用默认值/已有配置)
     --force              强制重装等
-    --skip-browser       安装时跳过浏览器组件(省内存/时间)
+    --docker             使用 Docker Compose 部署(默认)
+    --native             使用原地安装(旧模式,兼容已有实例)
+    --image <镜像>       指定镜像(例:ghcr.io/minimaxflora/hermes-agent:latest)
+    --skip-browser       安装时跳过浏览器组件(省内存/时间,仅 --native 有效)
     --no-color           关闭颜色
     --debug              打开 bash -x
 EOF
@@ -52,6 +55,10 @@ main() {
             -y|--yes) ASSUME_YES=1 ;;
             --non-interactive|--no-interactive) NONINTERACTIVE=1 ;;
             --force) FORCE=1 ;;
+            --docker) HV_DEPLOY_BACKEND="docker" ;;
+            --native) HV_DEPLOY_BACKEND="native" ;;
+            --image) HV_IMAGE_REF="${2:-}"; shift ;;
+            --image=*) HV_IMAGE_REF="${1#*=}" ;;
             --skip-browser) SKIP_BROWSER=1 ;;
             --no-color) NO_COLOR=1; R=""; G=""; Y=""; B=""; C=""; M=""; W=""; BD=""; DM=""; N="" ;;
             --debug) DEBUG_ON=1 ;;
@@ -69,6 +76,7 @@ main() {
         *) state_init ;;
     esac
     load_mirror_env
+    backend_init "$(st_get DEPLOY_BACKEND "")"
     # 生效端口:用户态撞端口时 ensure_free_ports 会把新端口记进 state,这里读回来
     DASH_PORT="$(st_get DASH_PORT "$DASH_PORT")"
     API_PORT="$(st_get API_PORT "$API_PORT")"
@@ -85,7 +93,7 @@ main() {
     case "$cmd" in
         help|-h|--help) usage ;;
         version|-V|--version) printf 'hermes-vps %s\n' "$V" ;;
-        mode|--mode) printf '运行模式:%s\n配置 %s · 日志 %s · HERMES_HOME %s\n' "$(mode_label)" "$ETC_DIR" "$TOOL_LOG_DIR" "$UHOME" ;;
+        mode|--mode) printf '运行模式:%s · 后端:%s\n配置 %s · 日志 %s · HERMES_HOME %s\n' "$(mode_label)" "$DEPLOY_BACKEND" "$ETC_DIR" "$TOOL_LOG_DIR" "$UHOME" ;;
         install|deploy) deploy_all ;;
         model) model_menu ;;
         platform|platforms) plat_menu ;;

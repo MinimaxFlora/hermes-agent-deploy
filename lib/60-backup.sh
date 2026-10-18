@@ -39,6 +39,7 @@ backup_create() {
     [[ -f "$MIRROR_FILE" ]] && cp -p "$MIRROR_FILE" "$staged/etc/" 2>/dev/null || true
     [[ -f "$CRED_FILE" ]] && cp -p "$CRED_FILE" "$staged/etc/" 2>/dev/null || true
     [[ -f "$CADDYFILE" ]] && cp -p "$CADDYFILE" "$staged/etc/Caddyfile" 2>/dev/null || true
+    [[ -f "$COMPOSE_FILE" ]] && cp -p "$COMPOSE_FILE" "$staged/etc/docker-compose.yml" 2>/dev/null || true
     local u
     for u in /etc/systemd/system/hermes-gateway.service /etc/systemd/system/hermes-dashboard.service; do
         [[ -f "$u" ]] && cp -p "$u" "$staged/systemd/" 2>/dev/null || true
@@ -123,17 +124,18 @@ backup_restore() {
     local free_mb; free_mb="$(df -Pm "$HHOME" 2>/dev/null | awk 'NR==2{print $4}')" || free_mb=0
     if [[ "$free_mb" -lt "$need_mb" ]]; then rm -rf "$staged"; err "空间不足(需约 ${need_mb}MB,可用 ${free_mb}MB)"; return 1; fi
 
-    systemctl stop hermes-gateway hermes-dashboard >/dev/null 2>&1 || true
+    backend_stop_all
     set +e
     tar xzf "$pkg" -C "$staged" 2>/dev/null
     rc=$?
     set -e
     if [[ $rc -gt 1 ]]; then
         rm -rf "$staged"; warn "解包异常(rc=$rc),已中止;服务将拉回"
-        systemctl start hermes-gateway hermes-dashboard >/dev/null 2>&1 || true
+        backend_start_all
         return 1
     fi
-    local rdir="$staged/$(basename "$UHOME")"
+    local rdir
+    rdir="$staged/$(basename "$UHOME")"
     if [[ -d "$rdir" ]]; then
         install -d "$UHOME/unpacked.bak" 2>/dev/null || true
         # 就地合并:只把将被覆盖的部分挪走,避免破坏安装
@@ -148,18 +150,23 @@ backup_restore() {
             cp -p "$rel" "$dst" 2>/dev/null || true
           done ) 2>/dev/null
         set -e
-        chown -R "$HUSER:$HUSER" "$UHOME" 2>/dev/null || true
+        if docker_backend; then
+            docker_data_own
+        else
+            chown -R "$HUSER:$HUSER" "$UHOME" 2>/dev/null || true
+        fi
         ok "配置与数据已合并回 $UHOME"
     fi
     [[ -d "$staged/etc" ]] && {
         [[ -f "$staged/etc/state.env" ]] && cp -p "$staged/etc/state.env" "$STATE_FILE" 2>/dev/null || true
         [[ -f "$staged/etc/Caddyfile" ]] && cp -p "$staged/etc/Caddyfile" "$CADDYFILE" 2>/dev/null || true
-        ok "状态与 Caddy 配置已恢复"
+        [[ -f "$staged/etc/docker-compose.yml" ]] && cp -p "$staged/etc/docker-compose.yml" "$COMPOSE_FILE" 2>/dev/null || true
+        ok "状态、Compose 与 Caddy 配置已恢复"
     }
     [[ -d "$staged/systemd" ]] && cp -p "$staged"/systemd/* "$(unit_dir)/" 2>/dev/null || true
     rm -rf "$staged"
     systemctl daemon-reload 2>/dev/null || true
-    systemctl start hermes-gateway hermes-dashboard >/dev/null 2>&1 || true
+    backend_start_all
     systemctl is-active caddy >/dev/null 2>&1 || systemctl start caddy >/dev/null 2>&1 || true
     sleep 2
     ok "已恢复并拉起服务:$(service_brief)"

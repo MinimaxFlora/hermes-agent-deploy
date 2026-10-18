@@ -3,6 +3,17 @@
 # =============================================================================
 
 ensure_user() {
+    # Docker 模式:不创建系统用户,只准备数据目录;容器内固定以 UID 10000 运行
+    if docker_backend; then
+        step "准备数据目录(Docker)"
+        if ! install -d -m 700 -o "$DOCKER_UID" -g "$DOCKER_GID" "$UHOME" 2>/dev/null; then
+            mkdir -p "$UHOME" 2>/dev/null || true
+            chown "$DOCKER_UID:$DOCKER_GID" "$UHOME" 2>/dev/null || true
+            chmod 700 "$UHOME" 2>/dev/null || true
+        fi
+        ok "数据目录:$UHOME(属主 ${DOCKER_UID}:${DOCKER_GID})"
+        return 0
+    fi
     # 用户态:不创建任何系统用户,只准备目录(就是当前用户自己)
     if [[ "$HV_MODE" != "system" ]]; then
         info "用户态模式:数据放在 $HHOME(当前用户 $(id -un)),不创建系统用户"
@@ -30,8 +41,21 @@ ensure_user() {
     install -d -o "$HUSER" -g "$HUSER" -m 755 "$HHOME/.local" "$HHOME/.local/bin"
 }
 
-hermes_installed() { [[ -x "$HBIN" ]]; }
+hermes_installed() {
+    if docker_backend; then
+        [[ -f "$COMPOSE_FILE" ]] || return 1
+        docker ps -a --format '{{.Names}}' 2>/dev/null | grep -qx 'hermes-gateway' || return 1
+        return 0
+    fi
+    [[ -x "$HBIN" ]]
+}
 hermes_version() {
+    if docker_backend; then
+        local v; v="$(docker_hermes_version)"
+        [[ -n "$v" ]] || v="$(st_get HERMES_VERSION)"
+        [[ -n "$v" ]] && printf '%s' "$v"
+        return 0
+    fi
     hermes_installed || return 1
     local out=""
     out="$(run_as_user_env "$HUSER" "HERMES_HOME=$UHOME" -- "$HBIN" --version 2>/dev/null | sed -n '1p')" || out=""
@@ -40,6 +64,23 @@ hermes_version() {
 }
 
 hermes_install() {
+    # Docker 模式:只装 Docker Engine,镜像里已经带好 Python/Node/浏览器
+    if docker_backend; then
+        step "部署 Hermes Docker 容器"
+        docker_install || return 1
+        docker_compose_write || return 1
+        docker_pull_image || return 1
+        docker_compose_up || return 1
+        if docker_wait_ready; then
+            ok "容器已就绪:$(hermes_version 2>/dev/null || echo 版本未知)"
+        else
+            warn "容器启动较慢或未就绪;可稍后看日志:docker compose -f $COMPOSE_FILE logs gateway"
+        fi
+        st_set HERMES_VERSION "$(hermes_version 2>/dev/null || echo unknown)"
+        st_set INSTALLED_AT "$(date -Is)"
+        st_set DEPLOY_BACKEND docker
+        return 0
+    fi
     # 官方安装脚本是纯用户空间的:用户态直接装到自己的家目录,不需要 root
     if [[ "$HV_MODE" == "system" ]]; then require_root "安装 Hermes(系统级)"; fi
     if hermes_installed; then
@@ -81,6 +122,19 @@ hermes_install() {
 }
 
 hermes_ensure_config() {
+    if docker_backend; then
+        if ! install -d -m 700 -o "$DOCKER_UID" -g "$DOCKER_GID" "$UHOME" 2>/dev/null; then
+            mkdir -p "$UHOME" 2>/dev/null || true
+            chown "$DOCKER_UID:$DOCKER_GID" "$UHOME" 2>/dev/null || true
+        fi
+        # .env / config.yaml 由容器首次启动时从镜像内的示例种子生成;
+        # 这里不预创建空 .env,否则 stage2 会跳过 .env.example 的默认项。
+        if [[ -f "$UHOME/.env" ]]; then
+            chown "$DOCKER_UID:$DOCKER_GID" "$UHOME/.env" 2>/dev/null || true
+            chmod 600 "$UHOME/.env"
+        fi
+        return 0
+    fi
     install -d -o "$HUSER" -g "$HUSER" -m 700 "$UHOME" 2>/dev/null || mkdir -p "$UHOME"
     [[ -f "$UHOME/.env" ]] || : >"$UHOME/.env"
     chown "$HUSER:$HUSER" "$UHOME/.env" 2>/dev/null || true; chmod 600 "$UHOME/.env"
@@ -93,6 +147,17 @@ hermes_ensure_config() {
 
 hermes_update() {
     hermes_installed || die "Hermes 未安装,请先部署"
+    if docker_backend; then
+        step "更新 Hermes 镜像"
+        local before; before="$(hermes_version 2>/dev/null || echo unknown)"
+        if [[ "${SKIP_BACKUP:-0}" != "1" ]] && confirm "更新前先创建备份?" yes; then backup_create pre-update; fi
+        docker_pull_image || return 1
+        docker_compose_up || return 1
+        docker_wait_ready || warn "容器未在预期时间内就绪,请查看日志"
+        st_set HERMES_VERSION "$(hermes_version 2>/dev/null || echo unknown)"
+        ok "更新完成:$before → $(hermes_version 2>/dev/null || echo unknown)"
+        return 0
+    fi
     step "更新 Hermes"
     local before; before="$(hermes_version 2>/dev/null || echo unknown)"
     if [[ "${SKIP_BACKUP:-0}" != "1" ]] && confirm "更新前先创建备份?" yes; then backup_create pre-update; fi

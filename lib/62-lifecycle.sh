@@ -17,6 +17,9 @@ uninstall_preview() {
     )
     # 家目录只属于服务用户:用户态下 $HHOME 就是使用者自己的家目录,绝不能列进去
     [[ "$HV_MODE" == "system" ]] && items+=("服务用户|$HHOME|hermes 用户家目录" "Caddy|/etc/systemd/system/caddy.service|仅当由本工具安装二进制时")
+    if docker_backend; then
+        items+=("Docker|$COMPOSE_FILE|停止并删除 gateway / dashboard 容器")
+    fi
     local it
     for it in "${items[@]}"; do
         local kind path note
@@ -41,6 +44,12 @@ uninstall_run() {
 
     local UD; UD="$(unit_dir)"
     local SC="systemctl"; [[ "$HV_MODE" != "system" ]] && SC="systemctl --user"
+    if docker_backend; then
+        if confirm "停止并删除 Docker 容器(gateway / dashboard)?" yes; then
+            docker_uninstall_stack
+            ok "容器已停止并删除"
+        fi
+    fi
     local steps=(
       "hermes-gateway:stop|$SC stop hermes-gateway; $SC disable hermes-gateway; rm -f $UD/hermes-gateway.service; rm -rf $UD/hermes-gateway.service.d"
       "hermes-dashboard:stop|$SC stop hermes-dashboard; $SC disable hermes-dashboard; rm -f $UD/hermes-dashboard.service; rm -rf $UD/hermes-dashboard.service.d"
@@ -60,7 +69,7 @@ uninstall_run() {
       "$TOOL_LOG_DIR|本工具日志"
       "$CADDYFILE|Caddy 反代配置"
     )
-    [[ "$HV_MODE" == "system" ]] && paths+=("$HHOME|hermes 用户家目录")
+    [[ "$HV_MODE" == "system" && "$DEPLOY_BACKEND" != "docker" ]] && paths+=("$HHOME|hermes 用户家目录")
     local p
     for p in "${paths[@]}"; do
         local path="${p%%|*}" note="${p#*|}"
@@ -72,7 +81,7 @@ uninstall_run() {
             info "保留 $path"
         fi
     done
-    if [[ "$HV_MODE" == "system" ]] && id "$HUSER" >/dev/null 2>&1 && confirm "删除系统用户 ${HUSER}?" no; then
+    if [[ "$HV_MODE" == "system" && "$DEPLOY_BACKEND" != "docker" ]] && id "$HUSER" >/dev/null 2>&1 && confirm "删除系统用户 ${HUSER}?" no; then
         userdel "$HUSER" 2>/dev/null || warn "userdel 失败(可能有进程占用)"
         ok "已删除用户 $HUSER"
     fi

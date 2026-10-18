@@ -31,6 +31,7 @@ run_as_user_env() { # run_as_user_env <user> [KEY=VAL…] -- cmd args…
 }
 run_as_user() { local u="$1"; shift; run_as_user_env "$u" -- "$@"; }
 hh() { # 以 hermes 用户运行 hermes 子命令(自动带 HERMES_HOME)
+    if docker_backend; then docker_hermes_exec "$@"; return $?; fi
     run_as_user_env "$HUSER" "HERMES_HOME=$UHOME" -- "$HBIN" "$@"
 }
 hcfg() { # 写 config.yaml:一律走官方 CLI

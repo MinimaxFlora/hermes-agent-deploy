@@ -4,10 +4,12 @@
 
 **VPS に [Hermes Agent](https://github.com/NousResearch/hermes-agent) を、`.sh` ファイル 1 つで導入・設定・運用。**
 
-Docker は不要。Caddyfile を手書きする必要もなし。環境変数を探してドキュメントを掘る必要もなし。
+Docker Compose を手書きする必要はありません。Caddyfile を手書きする必要もなし。環境変数を探してドキュメントを掘る必要もなし。
 まっさらなサーバーから「独自ドメインの HTTPS で管理パネルを開き、スマホの QQ / WeChat から自分の AI アシスタントと会話する」ところまで、番号を入力するだけで完了します。
 
 [简体中文](README.md) · [English](README.en.md) · [繁體中文](README.zh-TW.md) · [**日本語**](README.ja.md) · [한국어](README.ko.md)
+
+> **2026-10 更新**:新規デプロイは Docker Compose + 公式イメージ(Docker Hub / GHCR)が既定です。モデルはプロバイダーの `/models` から選択でき、API キーは `*` で表示されます。詳細は [README.md](README.md) / [English](README.en.md)。本翻訳は遅れている場合があります。
 
 ![Platform](https://img.shields.io/badge/Platform-Debian%20%7C%20Ubuntu-A81D33?style=flat-square&logo=debian&logoColor=white)
 ![Arch](https://img.shields.io/badge/arch-amd64%20%7C%20arm64-2496ED?style=flat-square)

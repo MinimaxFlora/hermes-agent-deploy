@@ -4,6 +4,8 @@
 deploy_all() {
     if [[ "$HV_MODE" == "system" ]]; then
         require_root "一键部署(系统级)"
+    elif docker_backend; then
+        require_root "Docker Compose 部署(需要 root 安装 Docker 与 80/443)"
     fi
     clear_screen
     header "一键部署"
@@ -25,7 +27,14 @@ deploy_all() {
         else warn "非 Debian/Ubuntu 系:用户态部署仍可继续,但需要 curl/git/tar 已就绪"; fi
     fi
     if [[ "$HV_MODE" == "system" ]]; then
-        if [[ "$INIT" != "systemd" ]]; then die "需要 systemd(未检测到 /run/systemd/system)"; fi
+        if [[ "$INIT" != "systemd" ]]; then
+            if docker_backend; then
+                warn "未检测到 systemd:Docker 容器可以运行,但开机自启/服务托管需要 systemd"
+                dim "生产 VPS 请使用带 systemd 的 Debian/Ubuntu;当前环境仅适合测试"
+            else
+                die "需要 systemd(未检测到 /run/systemd/system)"
+            fi
+        fi
     else
         dim "用户态部署:全部落在 $HHOME,不需要 root;域名/HTTPS、防火墙等系统级能力稍后可单独提权执行"
         if have systemctl && ! systemctl --user show-environment >/dev/null 2>&1; then
@@ -48,6 +57,7 @@ deploy_all() {
         fi
     fi
     if [[ -n "$domain" ]]; then ask email "证书通知邮箱(可留空)" "$(st_get ACME_EMAIL)"; fi
+    if docker_backend; then docker_choose_image; fi
     if [[ "$(st_get MODEL_PROVIDER)" == "" ]]; then
         confirm "现在配置模型提供商(填 API Key,自动验证)?" yes && want_model=1 || want_model=0
     fi
@@ -70,10 +80,13 @@ deploy_all() {
     mirror_probe || warn "未找到可用加速通道,继续用直连"
     mirror_apply_user
 
-    progress "创建服务用户与目录"
+    if docker_backend; then
+        progress "准备数据目录"
+    else
+        progress "创建服务用户与目录"
+    fi
     ensure_user
     hermes_ensure_config
-
     progress "安装 Hermes Agent"
     hermes_install
 
@@ -111,7 +124,9 @@ deploy_all() {
     credentials_write "$domain"
 
     progress "模型提供商"
-    if [[ $want_model -eq 1 ]]; then model_menu; else info "跳过(菜单 2 随时可配)"; fi
+    if [[ $want_model -eq 1 ]]; then
+        if interactive; then model_menu; else info "非交互模式:跳过模型配置(稍后用菜单 2 配置)"; fi
+    else info "跳过(菜单 2 随时可配)"; fi
 
     if [[ "$HV_MODE" == "system" ]]; then
         progress "防火墙与收尾"
@@ -120,7 +135,9 @@ deploy_all() {
         dim "用户态:跳过防火墙配置(仅系统级)"
     fi
 
-    if [[ $want_platform -eq 1 ]]; then plat_menu; fi
+    if [[ $want_platform -eq 1 ]]; then
+        if interactive; then plat_menu; else info "非交互模式:跳过消息平台配置(稍后用菜单 3)"; fi
+    fi
 
     rule
     printf '\n  %s部署完成%s\n' "$BD$G" "$N"

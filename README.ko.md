@@ -4,10 +4,12 @@
 
 **VPS에 [Hermes Agent](https://github.com/NousResearch/hermes-agent)를 `.sh` 파일 하나로 설치·설정·운영합니다.**
 
-Docker 필요 없음. Caddyfile을 직접 작성할 필요 없음. 환경 변수를 찾아 문서를 뒤질 필요도 없음.
+Docker Compose를 직접 작성할 필요 없음. Caddyfile을 직접 작성할 필요 없음. 환경 변수를 찾아 문서를 뒤질 필요도 없음.
 빈 서버에서 “내 도메인의 HTTPS로 관리 패널 열기 + 휴대폰 QQ / WeChat에서 내 AI 비서와 대화”까지, 숫자만 입력하면 끝납니다.
 
 [简体中文](README.md) · [English](README.en.md) · [繁體中文](README.zh-TW.md) · [日本語](README.ja.md) · [**한국어**](README.ko.md)
+
+> **2026-10 업데이트**: 새 배포는 Docker Compose + 공식 이미지(Docker Hub / GHCR)가 기본입니다. 모델은 공급자의 `/models`에서 선택하며 API 키는 `*`로 표시됩니다. 자세한 내용은 [README.md](README.md) / [English](README.en.md). 이 번역은 지연될 수 있습니다.
 
 ![Platform](https://img.shields.io/badge/Platform-Debian%20%7C%20Ubuntu-A81D33?style=flat-square&logo=debian&logoColor=white)
 ![Arch](https://img.shields.io/badge/arch-amd64%20%7C%20arm64-2496ED?style=flat-square)

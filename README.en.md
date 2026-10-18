@@ -2,378 +2,179 @@
 
 # hermes-vps
 
-**Install, configure and run [Hermes Agent](https://github.com/NousResearch/hermes-agent) on your VPS — with a single `.sh` file.**
+**Deploy [Hermes Agent](https://github.com/NousResearch/hermes-agent) on a VPS with Docker Compose — one `.sh` file, from bare metal to a domain-protected dashboard and a chatbot in your messenger.**
 
-No Docker. No hand-written Caddyfile. No hunting through docs for environment variables.
-From a bare server to “HTTPS dashboard on your domain + chatting with your own AI assistant inside QQ / WeChat on your phone” — by typing menu numbers.
+No Compose file, no Caddyfile, no environment-variable hunting. Type numbers, get a running agent.
 
 [简体中文](README.md) · [**English**](README.en.md) · [繁體中文](README.zh-TW.md) · [日本語](README.ja.md) · [한국어](README.ko.md)
 
 ![Platform](https://img.shields.io/badge/Platform-Debian%20%7C%20Ubuntu-A81D33?style=flat-square&logo=debian&logoColor=white)
 ![Arch](https://img.shields.io/badge/arch-amd64%20%7C%20arm64-2496ED?style=flat-square)
-![Single File](https://img.shields.io/badge/single%20file-one%20.sh-4EAA25?style=flat-square&logo=gnubash&logoColor=white)
-![No Docker](https://img.shields.io/badge/docker-not%20required-2496ED?style=flat-square&logo=docker&logoColor=white)
-![UI](https://img.shields.io/badge/UI-plain%20text%20menu-000000?style=flat-square&logo=gnometerminal&logoColor=white)
+![Deploy](https://img.shields.io/badge/deploy-Docker%20Compose-2496ED?style=flat-square&logo=docker&logoColor=white)
+![Image](https://img.shields.io/badge/image-Docker%20Hub%20%7C%20GHCR-0db7ed?style=flat-square)
 ![License](https://img.shields.io/badge/license-MIT-yellow?style=flat-square)
 
 </div>
 
 ---
 
-## What is this
+## What it is
 
-`hermes-vps` is a **single-file Bash tool** (~2,900 lines, zero third-party dependencies) that turns the whole deployment and operations lifecycle of Hermes Agent on a Linux server into an interactive menu:
+`hermes-vps` is a single Bash tool that turns the whole VPS lifecycle into a text menu:
 
 ```
-Install Hermes → pick a model (it verifies the model really answers) → connect chat platforms
-              → automatic HTTPS via Caddy on your domain → systemd autostart → diagnose / backup / update / uninstall
+install Docker → pull the official image → render Compose → pick a model from the real provider list
+                → connect messengers → Caddy HTTPS → containers on boot → doctor / backup / update / uninstall
 ```
 
-The UI is a **plain text menu** — type a number and you are done. No dialog boxes, no jumping into vendor wizards; every setting is configured inside the script itself.
-
----
-
-## ✨ Highlights
+## Highlights
 
 | | |
 |---|---|
-| 🎯 **One file does everything** | A single `.sh`. No framework, no Docker, no pile of scripts. Download it and run. |
-| 🧠 **“It works” is verified, not assumed** | After you paste an API key it calls the provider's API directly (translating HTTP 200/401/402/404/429 into plain language) and then sends a real one-shot message through Hermes to prove model → toolchain → reply works end to end. |
-| 💬 **Platform onboarding is verified too** | QQ exchanges a real `access_token`, Feishu a `tenant_access_token`, DingTalk an `accessToken`, Telegram `getMe`, Discord `users/@me`, Slack `auth.test`, Matrix `account/whoami` — only the vendor's own “yes” counts. |
-| 📱 **QR codes render inside the script** | QQ / WeChat scan-to-login calls the official adapter functions directly: the QR is printed in your terminal, then credentials are written, the platform enabled, the gateway restarted and its connection log summarised. The vendor config UI never opens. |
-| 🔐 **Secure by default** | Dashboard and API **bind to 127.0.0.1 only**; public traffic goes through Caddy; the dashboard requires authentication; services run as a dedicated system user `hermes`; all config changes go through the official CLI (never hand-edited YAML); the Caddyfile is validated before every reload. |
-| 🇨🇳 **Ready for restricted networks** | Automatically benchmarks GitHub / PyPI mirrors and applies the fastest one — including git `insteadOf` and a user-level `uv.toml`, so later `hermes update` runs stay accelerated. |
-| 🩺 **Self-check and rollback** | 22-point health check (services / ports / auth gate / API auth / certificate / credential permissions / platform connections / backups), a backup-restore drill that was actually performed on a real machine, one-command update with automatic pre-backup, and an uninstaller that lists every path before asking. |
-| 🌏 **Docs in five languages** | 简体中文 / English / 繁體中文 / 日本語 / 한국어. |
+| 🐳 **Docker Compose by default** | Pulls `dockorae/hermes-agent` (or GHCR) instead of compiling Python/Node/Chromium on the VPS. Updating is just a new image. |
+| 🌐 **Domain + automatic HTTPS** | Enter a domain, Caddy obtains a certificate, and `https://your-domain` serves the dashboard. The dashboard and API stay bound to `127.0.0.1`. |
+| 🧠 **Pick a model, don't guess its ID** | After the API key is entered, the tool calls the provider's `/models` endpoint and shows a real selectable list (DeepSeek V4.1 Flash, V4 Pro, …), with a built-in catalog fallback. |
+| 🔐 **Secrets are masked with `*`** | API keys and bot tokens echo one `*` per character; length is visible, the value is not. |
+| 🎯 **Connectivity is verified, not assumed** | Direct provider call (401/402/404 translated) plus a real one-line chat through Hermes. |
+| 💬 **Messenger onboarding with vendor checks** | QQ, WeChat, WeCom, Feishu, DingTalk, Telegram, Discord, Slack, Matrix, WhatsApp, email, OpenAI-compatible API. |
+| 📱 **QR codes printed in the terminal** | Official adapters run inside the container for QQ / WeChat pairing. |
+| 🛡 **Safe defaults** | Container UID 10000, data owned by 10000, Compose 0600, credentials 0600, dashboard loopback-only, Caddy validates before reload. |
+| 🩺 **Diagnostics and rollback** | Services, ports, auth gate, API auth, certificate, permissions, platform connections, backups. |
+| 🌏 **Five languages** | 简体中文 / English / 繁體中文 / 日本語 / 한국어 |
 
----
+## Run modes
 
-## 🧩 Run modes: root and regular users are both supported
-
-> **Identical layout to the official installer**: the official script runs entirely in user space (no root, no sudo/apt, it never touches system directories) — code goes to `$HERMES_HOME/hermes-agent`, the executable is `$HOME/.local/bin/hermes`, data lives in `$HERMES_HOME` (default `~/.hermes`).
-> Both modes here pass `--hermes-home` / `--dir` explicitly, so paths match the official layout; system-wide mode merely runs it under the dedicated `hermes` service user (home `/opt/hermes`) so systemd can manage it and keep it isolated.
-
-
-The script detects your identity at startup; both modes are fully usable with no extra flags:
-
-| | **System-wide (root)** | **User mode (regular user)** |
+| | **root (recommended)** | **regular user** |
 |---|---|---|
+| Deployment | **Docker Compose + official image (default)** | Native install under `$HOME` |
+| Override | `--native` for a native root install | `--docker` prompts for sudo |
+| Data | `/opt/hermes/.hermes` | `~/.hermes` |
+| Services | `hermes-gateway`, `hermes-dashboard` containers | `systemd --user` or background process |
 | Config/state | `/etc/hermes-vps` | `~/.config/hermes-vps` |
-| Logs | `/var/log/hermes-vps` | `~/.local/state/hermes-vps` |
-| Backups | `/var/backups/hermes-vps` | `~/.local/share/hermes-vps/backups` |
-| Hermes data | `/opt/hermes/.hermes` (dedicated `hermes` user) | `~/.hermes` (your own account) |
-| Services | system `systemd` units (boot-start) | `systemd --user`; falls back to a **background process + PID file** when there is no user DBus |
-| Domain + HTTPS (80/443) | ✅ built-in Caddy with automatic certificates | ⚠️ privileged: selecting it offers to re-run via `sudo` |
-| Firewall / swap / OS packages | ✅ automatic | ⚠️ privileged (explicitly reported, never a silent failure) |
-| Models / platforms (QQ, WeChat…)/ dashboard / backups / self-check | ✅ | ✅ |
+| Domain + HTTPS | ✅ built-in Caddy | ⚠️ needs root (`sudo` re-exec) |
+| Model / platform / panel / backup / doctor | ✅ (official CLI inside the container) | ✅ |
+
+Existing native installations are detected automatically and keep their systemd management.
 
 ```bash
-# Regular user (user mode, touches nothing outside $HOME)
-curl -fsSL https://raw.githubusercontent.com/MinimaxFlora/hermes-agent-deploy/main/install.sh | bash -s -- --user
-
-# root (system-wide; recommended, one instance per machine)
+# root, Docker Compose
 curl -fsSL https://raw.githubusercontent.com/MinimaxFlora/hermes-agent-deploy/main/install.sh | sudo bash
-```
+sudo hermes-vps
 
-Check the current mode with `hermes-vps mode`. The status panel also shows `模式:` and marks root-only entries as `需要 root`.
-
-## 🚀 Quick start (60 seconds)
-
-```bash
-# 1) Log in to your server (root or a regular user — both are supported)
-ssh root@<your-server>
-
-# 2) Install and run: root → /usr/local/bin; regular user → ~/.local/bin
-#    root
-curl -fsSL https://raw.githubusercontent.com/MinimaxFlora/hermes-agent-deploy/main/install.sh | sudo bash
-sudo hermes-vps                     # open the menu (choose 1 on first run, system-wide)
-
-#    regular user (no root needed; everything under $HOME: data ~/.hermes, services systemd --user)
+# regular user, native mode
 curl -fsSL https://raw.githubusercontent.com/MinimaxFlora/hermes-agent-deploy/main/install.sh | bash
-hermes-vps                          # open the menu (user mode)
+hermes-vps
+
+hermes-vps mode      # e.g. 系统级(root) · 后端:docker
 ```
 
-Installer options (with the pipe form pass flags via `bash -s --`; if you saved install.sh locally use `bash install.sh …`):
+## Quick start
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/MinimaxFlora/hermes-agent-deploy/main/install.sh | bash -s -- --check            # show installed vs latest
-curl -fsSL https://raw.githubusercontent.com/MinimaxFlora/hermes-agent-deploy/main/install.sh | bash -s -- --version v1.0.0   # install a specific version
-curl -fsSL https://raw.githubusercontent.com/MinimaxFlora/hermes-agent-deploy/main/install.sh | bash -s -- --user             # force ~/.local/bin
-curl -fsSL https://raw.githubusercontent.com/MinimaxFlora/hermes-agent-deploy/main/install.sh | bash -s -- --system           # force /usr/local/bin (needs root)
+ssh root@<your-vps>
+curl -fsSL https://raw.githubusercontent.com/MinimaxFlora/hermes-agent-deploy/main/install.sh | sudo bash
+sudo hermes-vps
+# choose 1 → domain → image registry (Docker Hub / GHCR) → model from the list
 ```
 
-Pick `1` (one-click deploy) the first time: enter a domain (optional), choose a model provider, and the script does the rest. Expect 5–15 minutes depending on the machine and network.
+Takes roughly 3–10 minutes, mostly pulling the ~1 GB image.
 
 ### Requirements
 
 | Item | Requirement |
 |---|---|
 | OS | Debian 10+ / Ubuntu 20.04+ (amd64 / arm64) |
-| Privileges | root |
-| Memory | ≥ 1 GB (below 1.8 GB with no swap, a 2 GB swapfile is created automatically to avoid OOM) |
-| Disk | ≥ 2 GB free |
-| Domain | Optional. For `https://your-domain` access, point an A record at the server's public IP and open ports 80/443 |
-| Network | Direct or restricted — mirrors are probed automatically |
+| Privileges | root for Docker deployment; native mode works as a regular user |
+| RAM | ≥ 1 GB |
+| Disk | ≥ 5 GB free (image ≈ 3 GB unpacked, plus data and backups) |
+| Domain | A record pointing at the VPS, ports 80/443 reachable |
+| Network | Docker Hub slow? choose GHCR or configure a registry mirror |
 
----
+## Model configuration
 
-## 🖥 UI preview
+1. Enter the API key — shown as `**********`; leaving it empty keeps the saved key.
+2. The tool calls `/models` and lists actual models:
 
-```
-  ╭──────────────────────────────────────────────────────────────────────────╮
-  │  Hermes Agent · VPS 一键部署与管理                                       │
-  │  模型 / QQ / 微信 / 域名 HTTPS / 自检备份                                │
-  │  v1.0.0  ·  Debian GNU/Linux 13 (trixie) x86_64  ·  2C / 967MB           │
-  ╰──────────────────────────────────────────────────────────────────────────╯
+   ```
+   Select model · DeepSeek
+     Source: provider API · 2 models
+       1) deepseek-flash     DeepSeek V4.1 Flash
+       2) deepseek-v4-pro    DeepSeek V4 Pro
+   ```
 
-  运行状态 ──────────────────────────────────────────────────────────────
-  Hermes      ● v0.21.5
-  服务        网关 ●  面板 ●  Caddy ●
-  域名        panel.example.com(证书剩 89 天)
-  模型        deepseek / deepseek-chat(已验证)
-  平台        已配置 2 个,已连接 2 个
-  ──────────────────────────────────────────────────────────────────────────
+3. Choose a number; use `n`/`p` to page, `s` to search, `m` to type a custom ID.
+4. If the endpoint is unavailable, the built-in catalog is used. For DeepSeek it contains `deepseek-flash`, `deepseek-v4-pro`, `deepseek-chat`, `deepseek-reasoner`.
 
-  主菜单
-  ──────────────────────────────────────────────────────────────────────────
-     1) 一键部署 / 重新部署       安装 Hermes、面板、域名、平台接入
-     2) 模型提供商                填 API Key,并真实验证能否对话
-     3) 消息平台                  QQ / 微信 / 企业微信 / 飞书 / 钉钉 / TG
-     4) 域名与反向代理            Caddy 自动 HTTPS、证书状态
-     5) 面板与 API                登录密码、公网地址、/v1 开关
-     6) 服务管理                  启动 / 停止 / 重启 / 看日志
-     7) 自检与诊断                服务、端口、认证门、API、证书、备份
-     8) 备份与恢复                打包配置与密钥,可一键回滚
-     9) 更新                      立即更新 / 每日自动更新
-    10) 防火墙与安全              只放行 SSH / 80 / 443
-    11) 网络加速探测              GitHub / PyPI 国内镜像自动选优
-    12) 使用说明 / 帮助           常用命令与路径
-    13) 卸载                      逐项确认,绝不静默批量删
-  ──────────────────────────────────────────────────────────────────────────
-     0) 退出
-```
+Verification is two-stage: direct `/chat/completions` check, then a real chat through Hermes.
 
-> The tool's UI is currently in Simplified Chinese. Everything is plain text, so translating the menu strings is a small, self-contained edit.
-
----
-
-## 🧭 Feature map
-
-Every menu entry has an equivalent subcommand, so the tool is fully scriptable / unattended.
-
-| Menu | Subcommand | Description |
-|---|---|---|
-| 1 One-click deploy | `install [--yes]` | 10-step pipeline, idempotent |
-| 2 Model providers | `model` | 19 built-ins + custom OpenAI-compatible endpoints; direct API check + real conversation test |
-| 3 Chat platforms | `platform` | QR platforms scan inside the script; credential platforms are verified immediately |
-| 4 Domain & proxy | `domain <domain>` | Render Caddyfile → `caddy validate` → hot reload → issue certificate |
-| 5 Dashboard & API | `panel` | Reset password, public URL, `/v1` toggle, live login test |
-| 6 Service control | `service start\|stop\|restart\|status\|logs` | gateway / dashboard / caddy |
-| 7 Diagnose | `diagnose` | 22 checks with per-item ✔/✘ |
-| 8 Backup & restore | `backup` / `restore` | Config + credentials; restore merges in place, never breaks the install |
-| 9 Update | `update` / `update auto-update on\|off` | Auto-backup before update; daily 04:30 timer |
-| 10 Firewall | `firewall` | Only ever **adds** rules |
-| 11 Network mirrors | `mirror --force` | Re-benchmark and apply |
-| 12 Help | `help` | Commands and paths cheat sheet |
-| 13 Uninstall | `uninstall` | Lists exact paths, confirms one by one |
-| — | `selftest` | Checks the script itself (syntax / data tables / Caddyfile rendering / real `caddy validate`) |
-| — | `self-install` | Installs itself to `/usr/local/bin/hermes-vps` |
-
-Common flags: `--yes`, `--non-interactive`, `--force`, `--skip-browser` (smaller install), `--no-color`, `--debug`.
-
----
-
-## 🤖 Model providers
-
-19 built-ins — paste a key and go:
-
-`DeepSeek` · `OpenRouter` · `Zhipu GLM` · `Kimi / Moonshot` · `Alibaba Qwen (DashScope)` · `MiniMax` · `OpenAI` · `Anthropic` · `Google Gemini` · `xAI Grok` · `DeepInfra` · `NovitaAI` · `Fireworks` · `NVIDIA NIM` · `Hugging Face` · `Xiaomi MiMo` · `Tencent TokenHub` · `StepFun` · **custom OpenAI-compatible endpoint** (vLLM / Ollama / One-API / your own gateway)
-
-**Two-stage verification instead of “looks configured”**
-
-1. **Direct provider check** — calls that provider's `/chat/completions` and reports within seconds, translating status codes into plain language: `401 invalid key`, `402 insufficient balance`, `404 wrong model or endpoint`, `429 rate limit / quota exhausted`, `000 network unreachable` — together with the vendor's own error text.
-2. **Real conversation** — sends “reply with exactly one word” through Hermes, proving model, toolchain, session and reply all work.
-
----
-
-## 💬 Chat platforms
-
-| Platform | Onboarding | In-script verification |
-|---|---|---|
-| **QQ Bot** | Official Bot API v2 (QR scan or AppID/Secret) | Exchanges `getAppAccessToken`; only the vendor's acceptance counts |
-| **Personal WeChat** | iLink QR login (QR rendered in the script) | Saved login state + gateway connection log |
-| **WeCom** | AI bot (Bot ID / Secret) | WebSocket gateway connection log |
-| **Feishu / Lark** | Long connection (App ID / Secret) | Exchanges `tenant_access_token` |
-| **DingTalk** | Stream mode (ClientID / Secret) | Exchanges `accessToken` |
-| **Telegram** | Bot token | `getMe` |
-| **Discord** | Bot token | `users/@me` |
-| **Slack** | Bot + app token (Socket Mode) | `auth.test` |
-| **Matrix** | Homeserver + access token | `account/whoami` |
-| **WhatsApp** | QR pairing | Gateway connection log |
-| **Email** | IMAP + SMTP | Gateway connection log |
-| **OpenAI-compatible API** | API key + port | No key → 401, with key → 200 |
-
-After configuring, the tool restarts the gateway, summarises the connection log **for the current run only**, and can send a test message through the platform. The status panel mirrors the result (`connected` / `failed`).
-
-> QR platforms render their QR code directly in this script's terminal (by calling the official adapter functions) — **it never opens the vendor setup UI**. If you do want the official wizard, run `hermes gateway setup` yourself.
-
----
-
-## 🔐 Security design
-
-- **Minimal exposure**: dashboard (9119) and OpenAI-compatible API (8642) **bind to `127.0.0.1` only**; public access always goes through Caddy.
-- **Auth gate always on**: dashboard requires Basic Auth plus a random session secret; unauthenticated access is rejected. `public_url` is set to `https://your-domain`, so there is no window where a public URL is advertised without authentication.
-- **Dedicated service user**: gateway and dashboard run as the system user `hermes` (never root), with `HERMES_HOME=/opt/hermes/.hermes`; interactive login for that user is disabled.
-- **Config through the official CLI**: `hermes config set` (never hand-edited `config.yaml`, which can break a running gateway); secrets live only in `.env` (mode 0600).
-- **Validate before applying**: the Caddyfile is checked with `caddy validate --adapter caddyfile` before reload; the previous file is backed up (last 5 kept).
-- **Firewall only adds**: allows SSH (port auto-detected) + 80 + 443; never deletes or rewrites existing rules.
-- **Credentials file 0600**: dashboard user/password, API key and session secret live in `/etc/hermes-vps/credentials.txt`.
-- **Destructive operations never silent**: uninstall / restore / backup pruning always list exact paths and ask per item.
-
----
-
-## 🏗 Architecture & on-disk layout
-
-```
-Source (this is all the repo contains; the release artifact is built by CI and never committed)
-  lib/00-common.sh       core: constants / colours / logging / input primitives / state / run-as-service-user
-  lib/10-input.sh        interactive primitives (plain text, no whiptail)
-  lib/11-state.sh        key-value store / tool state / credentials
-  lib/12-run.sh          run commands as the service user
-  lib/20-system.sh       distro detection / dependencies / swap guard
-  lib/21-mirror.sh       network mirrors (GitHub / PyPI benchmarking)
-  lib/22-firewall.sh     firewall (add-only)
-  lib/23-probe.sh        probes (ports / services / public IP / DNS)
-  lib/30-hermes.sh       service user + Hermes install & update
-  lib/31-model.sh        provider table + two-stage connectivity verification
-  lib/40-platform.sh     platform table + vendor API verification + in-script QR
-  lib/50-webui.sh        dashboard auth gate / credentials / public URL
-  lib/51-service.sh      systemd units and service control
-  lib/52-caddy.sh        Caddy install / render / validate / certificates
-  lib/60-backup.sh       backup & restore / updates and auto-update
-  lib/61-doctor.sh       health check (22 items)
-  lib/62-lifecycle.sh    uninstall (per-path confirmation)
-  lib/70-ui.sh           banner / status panel / menus
-  lib/71-deploy.sh       one-click deploy orchestration
-  lib/72-help.sh         help text
-  lib/80-cli.sh          argument parsing and subcommand dispatch
-  lib/90-selftest.sh     self-test
-  bin/hermes-vps         entrypoint (`bash bin/hermes-vps` loads lib/ in dev)
-  build.sh               assembles dist/hermes-vps.sh
-  install.sh             install / upgrade from Releases (latest + sha256 check)
-  tests/                 lint / smoke / strict / real caddy validation / routing / acceptance
-  VERSION                version number; tags must be v$VERSION
-  .github/workflows/     ci.yml (full test suite) + release.yml (build & publish on tag)
-```
-
-**Release flow**: bump `VERSION` → push tag `v$VERSION` → Actions runs the full suite, builds `hermes-vps.sh`, writes `.sha256` and creates the Release. Users only ever run `install.sh` and always get the same self-contained script.
-
-| Path | Contents |
-|---|---|
-| `/opt/hermes/.hermes` | Hermes data: config, `.env` (secrets), skills, sessions, logs |
-| `/opt/hermes` | Home of the `hermes` service user (runtime, virtualenv) |
-| `/etc/hermes-vps/state.env` | Tool state (domain, toggles, version) |
-| `/etc/hermes-vps/credentials.txt` | Dashboard user / password / API key / session secret (0600) |
-| `/etc/hermes-vps/mirror.env` | Selected mirror channels |
-| `/etc/caddy/Caddyfile` | Reverse proxy config (auto-backed-up to `.bak/`) |
-| `/var/backups/hermes-vps/` | Backups (last 7 kept) |
-| `/var/log/hermes-vps/hermes-vps.log` | Tool operation log |
-| `$HERMES_HOME/logs/gateway.log` | Gateway runtime log (**platform connection verdicts live here**) |
-
-systemd units: `hermes-gateway.service`, `hermes-dashboard.service`, `caddy.service` — all enabled at boot.
-
----
-
-## 🧪 Quality & verification
-
-This project was **accepted on a real VPS (Debian 13, 2 vCPU / 967 MB)**, not just “runs on my laptop”:
-
-| Item | Result |
-|---|---|
-| One-click deploy (10 steps) | Zero errors; a second idempotent run is equally clean |
-| `diagnose` health check | **22/22 passed** (services / ports / auth gate / API auth / certificate / credential permissions / platform connections / backups) |
-| Caddyfile | Rendered by the production functions and accepted by **real `caddy validate`**; HTTPS probe 200; certificate issued automatically |
-| Dashboard auth gate | Unauthenticated → 302/401; correct credentials → 200 with session cookies; wrong password → 401; login over the public HTTPS domain → 200 |
-| OpenAI-compatible API | 401 without a key, 200 with it; reachable through the reverse proxy |
-| Chat platform | QQ Bot completed a **real round trip** (inbound message → 3.7 s reply → delivered) |
-| Backup / restore | Backup → delete a marker file → restore: marker back, services restarted, dashboard 200 |
-| Uninstall preview | Lists every path and its purpose; keeps everything by default |
-| Script self-test | `selftest` covers syntax, data tables, Caddyfile rendering and validating with the real binary |
-
----
-
-## 🛠 FAQ
-
-**Certificate issuance fails?**
-The domain's A record must point at the server's public IP and ports 80/443 must be reachable from the internet (cloud security groups included). `hermes-vps diagnose` pinpoints the failing item.
-
-**A 1 GB VPS can't finish the install?**
-Below 1.8 GB of RAM with no swap, the script creates a 2 GB swapfile. This is a lesson from a real failure: the official installer was OOM-killed while bundling on a 1 GB box without swap.
-
-**Slow or failing downloads on a restricted network?**
-Menu 11 benchmarks GitHub / PyPI mirrors and applies the winner to git `insteadOf` and a user-level `uv.toml`, so later `hermes update` runs are accelerated too.
-
-**I changed a platform but nothing happens?**
-Restart the gateway (menu 6 → 4) or `hermes-vps service restart gateway`.
-
-**A platform shows “failed” with no obvious error?**
-Read `$HERMES_HOME/logs/gateway.log` (menu 6 → 7 tails it for you). Be careful to distinguish the **current run** from stale warnings left by a previous process.
-
-**What does uninstall delete?**
-Menu 13 lists every path and its purpose first, then asks per item; everything is kept by default and the backup directory is never deleted.
-
----
-
-### Visiting my domain returns `{"detail":"Invalid Host header. Dashboard requests must use the bound hostname or the configured public hostname."}`?
-
-The dashboard only accepts the **bound hostname (127.0.0.1)** or the hostname in **`dashboard.public_url`**, and that allow-list is read **when the dashboard starts**.
-So after configuring a domain you must restart the dashboard:
+## Common commands
 
 ```bash
-sudo systemctl restart hermes-dashboard     # system-wide (installed as root)
-systemctl --user restart hermes-dashboard   # user mode (or restart from menu 6)
+hermes-vps install                 # deploy / redeploy
+hermes-vps install --image ghcr.io/minimaxflora/hermes-agent:0.22.2
+hermes-vps model                   # provider + model picker
+hermes-vps platform                # messengers
+hermes-vps domain panel.example.com
+hermes-vps service restart gateway
+hermes-vps diagnose
+hermes-vps backup / restore
+hermes-vps update
+hermes-vps uninstall
 ```
 
-`hermes-vps diagnose` includes a “panel accepts the domain Host (HTTP …)” line; a 400 there means exactly the above.
-This tool only presents the **domain** as the access address: `127.0.0.1` is unreachable from your machine, so it never appears in the prompts or the credentials file (raw-IP access can also be refused by the dashboard's Host check).
+Flags: `--yes`, `--non-interactive`, `--force`, `--docker`, `--native`, `--image <ref>`, `--no-color`, `--debug`.
 
-### WeChat/QQ replies `Hi! I don't recognize you yet... Your pairing code: W6FFKXYC`
+## Security
 
-That's the platform **pairing** gate: by default strangers must be approved. The script handles it, no manual official command needed:
+- Dashboard binds `127.0.0.1:9119` (override with `DASH_PORT`), API binds `127.0.0.1:8642`; only Caddy is public.
+- Containers run as UID/GID 10000; `.env` and `config.yaml` are owned by 10000 and `.env` is 0600.
+- Basic auth + random session secret are mandatory for the dashboard; `public_url` is set to the HTTPS domain.
+- Configuration is written through the official `hermes config set` CLI inside the container.
+- Compose file 0600, credentials 0600, Caddyfile validated before reload.
+- Destructive operations list exact paths first and ask per item.
 
-```bash
-hermes-vps pairing list                       # who is waiting
-hermes-vps pairing all                        # approve every pending request
-hermes-vps pairing watch 180                  # auto-approve: watch 3 min, approve as they arrive
-hermes-vps pairing approve weixin W6FFKXYC    # approve using the code the bot sent
-hermes-vps pairing open                       # disable pairing entirely (anyone can DM; not recommended)
+## Layout
+
+```
+Docker Engine
+├── hermes-gateway    (host network, `gateway run`)
+├── hermes-dashboard  (host network, `dashboard --host 127.0.0.1 --port 9119`)
+└── /opt/hermes/.hermes → /opt/data
+
+Caddy (80/443) → 127.0.0.1:9119 and 127.0.0.1:8642
 ```
 
-In the menu: main menu **3** (platforms) → type **`p`** for pairing approval (list / approve all / auto-watch / enter code / policy).
-Also: when you configure a platform with the “pairing” DM policy, the script now **detects and approves** pending requests right after connecting, with an optional 2-minute watch.
+| Path | Purpose |
+|---|---|
+| `/opt/hermes/.hermes` | Hermes data: config, `.env`, skills, sessions, logs |
+| `/etc/hermes-vps/docker-compose.yml` | Generated Compose file (0600) |
+| `/etc/hermes-vps/state.env` | Tool state (domain, image, flags) |
+| `/etc/hermes-vps/credentials.txt` | Dashboard credentials and API key (0600) |
+| `/etc/caddy/Caddyfile` | Reverse proxy |
+| `/var/backups/hermes-vps/` | Backups (last 7) |
 
-## 🧰 Developer notes: pitfalls found on real machines
+Source modules: `lib/13-docker.sh` (engine/Compose/image/service control), `lib/31-model.sh` (catalog + picker), `lib/10-input.sh` (masked input), plus the existing platform, Caddy, backup, doctor and UI modules.
 
-Worth reading before editing this script (all from real deployments):
+## Testing
 
-1. Under `set -Eeuo pipefail`, if a function's **last statement** is `[[ ]] && cmd`, a false test makes the function return non-zero and `set -e` aborts the caller — end such functions with `return 0` or rewrite as `if`.
-2. `grep` returns 1 when nothing matches, which `pipefail` turns into a fatal error — every “read a value” helper must guard explicitly.
-3. `openssl rand | tr | head` triggers SIGPIPE upstream; use `openssl rand -base64` and truncate afterwards.
-4. An `ERR` trap must check `case "$-" in *e*)`, otherwise `set +e` fallback paths are misreported as fatal.
-5. `caddy validate/fmt` needs `--adapter caddyfile` (a temp filename gives no hint and is parsed as JSON).
-6. Caddy needs `/var/log/caddy` to exist with the right ownership before it starts.
-7. Wait for `HERMES_DASHBOARD_READY` instead of `sleep 2` when health-checking the dashboard.
-8. `tar` exit code 1 is a harmless warning; only 2 is a real failure. Never reference an already-deleted temp dir in a fallback branch.
-9. Restoring a backup must merge in place and move only the files it overwrites — replacing whole directories breaks the install.
-10. CJK characters occupy two terminal columns, so aligned menus must compute **display width**; in a one-line `case`, branches must be separated by `;;` rather than `;`.
-11. CRLF in the source breaks Linux with `$'\r': command not found` — normalise to LF (`\.gitattributes` enforces it).
-12. Platform connection verdicts are written to Hermes' own `logs/gateway.log` (not journald), and only the **current run** slice is meaningful.
-13. To run official Python logic from your own script, use the official launcher's `--run-module` (dependencies live in the tool's own runtime) and run it **as the service user**.
-14. Terminal QR rendering needs `qrcode`: `hermes pm install --extra messaging`.
-15. Exclude reinstallable content (source tree, Python runtime) from backups, or they balloon from ~100 MB to ~800 MB.
+- `tests/lint.sh` — syntax, data tables, reproducible build (52 checks)
+- `tests/smoke.sh` — 67 checks
+- `tests/strict.sh` — 15 checks under `set -Eeuo pipefail`
+- `tests/docker.sh` — 20 offline checks for image refs, Compose rendering, model catalog and backend selection
+- Real deployment on Debian 13 + Docker 26 with `dockorae/hermes-agent:0.22.2`, including dashboard HTTP 200 and `config set/get` inside the container.
 
----
+## FAQ
 
-## 📄 License
+**Image pull is slow.** Use GHCR (`ghcr.io/minimaxflora/hermes-agent`) or configure a Docker registry mirror.
+
+**Pin a version.** Set the image tag during deployment, or `hermes-vps install --image dockorae/hermes-agent:0.22.2`.
+
+**Existing native install.** Detected automatically. To migrate: stop native services, then `sudo hermes-vps install --docker`; the data directory is reused.
+
+**Dashboard 400 `Invalid Host header`.** The dashboard reads `dashboard.public_url` at startup. Run `hermes-vps domain <domain>` (it restarts the dashboard) or `hermes-vps service restart dashboard`.
+
+**Certificate fails.** Check the A record and ports 80/443 (including the cloud security group); `hermes-vps diagnose` reports each item.
+
+## License
 
 [MIT](LICENSE)

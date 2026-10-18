@@ -16,6 +16,21 @@ selftest() {
     n=0
     for l in "${PLATFORMS[@]}"; do n=$((n+1)); [[ "$(awk -F'|' '{print NF}' <<<"$l")" -eq 6 ]] || { printf '    %s 平台表字段数异常:%s\n' "$NO_SYM" "$l"; fails=$((fails+1)); }; done
     printf '    %s 平台数据表:%s 个\n' "$OK_SYM" "$n"
+    n=0
+    for l in "${PROVIDER_MODELS[@]}"; do n=$((n+1)); [[ "$(awk -F'|' '{print NF}' <<<"$l")" -eq 2 ]] || { printf '    %s 模型目录字段数异常:%s\n' "$NO_SYM" "$l"; fails=$((fails+1)); }; done
+    printf '    %s 模型目录:%s 条\n' "$OK_SYM" "$n"
+
+    local oldref="${HV_IMAGE_REF:-}" cf
+    HV_IMAGE_REF="example.test/hermes-agent:1.2.3"
+    cf="$(docker_compose_render)"
+    HV_IMAGE_REF="$oldref"
+    if printf '%s' "$cf" | grep -q 'image: example.test/hermes-agent:1.2.3' &&
+       printf '%s' "$cf" | grep -q 'network_mode: host' &&
+       printf '%s' "$cf" | grep -q '/opt/data'; then
+        printf '    %s Docker Compose 渲染正常(镜像 / host 网络 / 数据卷)\n' "$OK_SYM"
+    else
+        printf '    %s Docker Compose 渲染异常\n' "$NO_SYM"; fails=$((fails+1))
+    fi
 
     local tmpd; tmpd="$(mktemp -d)"
     kv_set "$tmpd/x.env" FOO "bar baz"

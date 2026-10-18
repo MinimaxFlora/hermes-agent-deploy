@@ -80,12 +80,23 @@ plat_live_state() {
 hermes_run_module() { # hermes_run_module <模块名> [参数…]
     local name="$1"; shift
     # PYTHONUNBUFFERED:非 TTY 时二维码/链接要立刻可见,不能被块缓冲吞掉
+    if docker_backend; then
+        docker_module_python "/opt/data/${name}.py" "$@" < /dev/null
+        return $?
+    fi
     run_as_user_env "$HUSER" "HERMES_HOME=$UHOME" "PYTHONUNBUFFERED=1" "PYTHONIOENCODING=utf-8"         -- "$HBIN" --run-module "$name" "$@"
 }
+
+# 模块文件放在哪:native 在源码树(docker 镜像里没有宿主机源码树,放数据目录)
+hermes_module_path() { # hermes_module_path <模块名>
+    if docker_backend; then printf '%s/%s.py' "$UHOME" "$1"
+    else printf '%s/hermes-agent/%s.py' "$UHOME" "$1"; fi
+}
 _qr_module_write() {
-    local dir="$UHOME/hermes-agent" f
+    local f dir
+    f="$(hermes_module_path hv_vps_onboard)"
+    dir="$(dirname "$f")"
     [[ -d "$dir" ]] || { err "找不到 $dir(先部署)"; return 1; }
-    f="$dir/hv_vps_onboard.py"
     cat >"$f" <<'PYEOF'
 """hermes-vps 扫码上线助手:直接调用官方适配器,不经过官方交互向导。"""
 import asyncio
@@ -170,11 +181,15 @@ if __name__ == "__main__":
         print("\n已取消。")
         sys.exit(130)
 PYEOF
-    chown "$HUSER:$HUSER" "$f" 2>/dev/null || true
+    if docker_backend; then
+        chown "$DOCKER_UID:$DOCKER_GID" "$f" 2>/dev/null || true
+    else
+        chown "$HUSER:$HUSER" "$f" 2>/dev/null || true
+    fi
     chmod 644 "$f"
     printf '%s' "$f"
 }
-_qr_module_cleanup() { rm -f "$UHOME/hermes-agent/hv_vps_onboard.py"; }
+_qr_module_cleanup() { rm -f "$(hermes_module_path hv_vps_onboard)" "$UHOME/hermes-agent/hv_vps_onboard.py"; }
 
 json_get() { # json_get <文件> <键>
     local file="$1" key="$2"
@@ -186,29 +201,39 @@ json_get() { # json_get <文件> <键>
 
 # 二维码渲染需要官方 messaging extra(qrcode 等)
 platform_qr_deps_ensure() {
-    local dir="$UHOME/hermes-agent" out=""
+    local checkf="" out=""
+    checkf="$(hermes_module_path hv_vps_check)"
     [[ "$(st_get QR_DEPS_OK)" == "1" ]] && return 0
-    [[ -d "$dir" ]] || return 1
-    cat >"$dir/hv_vps_check.py" <<'PYEOF'
+    [[ -d "$(dirname "$checkf")" ]] || return 1
+    cat >"$checkf" <<'PYEOF'
 try:
     import qrcode  # noqa: F401
     print("QR_OK")
 except Exception:
     print("QR_MISSING")
 PYEOF
-    chown "$HUSER:$HUSER" "$dir/hv_vps_check.py" 2>/dev/null || true
+    if docker_backend; then
+        chown "$DOCKER_UID:$DOCKER_GID" "$checkf" 2>/dev/null || true
+    else
+        chown "$HUSER:$HUSER" "$checkf" 2>/dev/null || true
+    fi
     out="$(hermes_run_module hv_vps_check 2>/dev/null | tail -n1)" || out=""
-    rm -f "$dir/hv_vps_check.py"
+    rm -f "$checkf"
     [[ "$out" == *QR_OK* ]] && { st_set QR_DEPS_OK 1; return 0; }
     step "补齐二维码与消息平台依赖(官方:hermes pm install --extra messaging)"
-    if run_as_user_env "$HUSER" "HERMES_HOME=$UHOME" -- timeout 600 "$HBIN" pm install --extra messaging </dev/null; then
+    if docker_backend; then
+        if docker_compose exec -T gateway hermes pm install --extra messaging </dev/null; then
+            st_set QR_DEPS_OK 1
+            ok "依赖已就绪"
+            return 0
+        fi
+    elif run_as_user_env "$HUSER" "HERMES_HOME=$UHOME" -- timeout 600 "$HBIN" pm install --extra messaging </dev/null; then
         st_set QR_DEPS_OK 1
         ok "依赖已就绪"
-    else
-        warn "依赖安装失败,二维码可能只显示链接(可直接在手机 QQ/微信里打开)"
-        return 1
+        return 0
     fi
-    return 0
+    warn "依赖安装失败,二维码可能只显示链接(可直接在手机 QQ/微信里打开)"
+    return 1
 }
 
 # 脚本内扫码:QQ / 微信
@@ -218,7 +243,10 @@ platform_qr_onboard() {
     platform_qr_deps_ensure || true
 
     # 结果文件必须让 hermes 用户能写:放服务用户家目录($UHOME),root 读走后即删
-    local out="$UHOME/onboard-${id}.json"
+    local out arg
+    out="$UHOME/onboard-${id}.json"
+    arg="$out"
+    docker_backend && arg="/opt/data/onboard-${id}.json"
     rm -f "$out"
     local mod="" rc=0
     mod="$(_qr_module_write)" || { pause; return 1; }
@@ -226,7 +254,7 @@ platform_qr_onboard() {
     dim "二维码会显示在下面;按 Ctrl+C 可随时取消"
     printf '\n'
     set +e
-    hermes_run_module hv_vps_onboard "$id" "$out" "${HV_QR_TIMEOUT:-600}"
+    hermes_run_module hv_vps_onboard "$id" "$arg" "${HV_QR_TIMEOUT:-600}"
     rc=$?
     set -e
     rm -f "$mod"
@@ -333,7 +361,7 @@ plat_menu() {
         rule
         printf '    编号 = 配置(输完凭据立即验证);  %sv<编号>%s = 验证连接;  %st<编号>%s = 发测试消息;  0) 返回\n' "$C" "$N" "$C" "$N"
         printf '    提示:%sQQ / 微信 都支持官方扫码上线;飞书/钉钉/TG 等填凭据即可%s\n' "$DM" "$N"
-        printf '    %sp%s = 配对审批(陌生人发消息被拦下时,在这里一键/自动放行)%s\n' "$C" "$N"
+        printf '    %sp%s = 配对审批(陌生人发消息被拦下时,在这里一键/自动放行)\n' "$C" "$N"
         local ch=""; menu_choice ch "请选择"
         case "$ch" in
             0|"") return 0 ;;
@@ -532,7 +560,7 @@ plat_send_test() {
     dim "用 hermes send 通过该平台发一条测试消息(需要平台的 home channel)"
     local out rc=0
     set +e
-    out="$(run_as_user_env "$HUSER" "HERMES_HOME=$UHOME" -- "$HBIN" send -t "$pid" "hermes-vps 测试消息:如果你看到这条,说明 ${pid} 收发生了效。" 2>&1)"
+    out="$(hh send -t "$pid" "hermes-vps 测试消息:如果你看到这条,说明 ${pid} 收发生了效。" 2>&1)"
     rc=$?
     set -e
     if [[ $rc -eq 0 ]]; then ok "发送成功(通过 $pid 的 home channel)"

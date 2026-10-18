@@ -35,6 +35,9 @@ jobs:
       - name: 严格模式回归 strict
         run: bash tests/strict.sh
 
+      - name: Docker 后端离线回归
+        run: bash tests/docker.sh
+
       - name: Caddyfile 校验(真实 caddy)
         run: bash tests/caddyfile-validate.sh
 

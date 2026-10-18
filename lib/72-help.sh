@@ -20,12 +20,22 @@ show_help() {
     printf '    访问凭据    : %s(600)\n' "$CRED_FILE"
     printf '    备份目录    : %s\n' "$BACKUP_DIR"
     printf '    Caddy 配置  : %s\n' "$CADDYFILE"
+    if docker_backend; then
+        printf '    Compose     : %s\n' "$COMPOSE_FILE"
+        printf '    镜像        : %s\n' "$(docker_image_ref)"
+    fi
     printf '    工具日志    : %s\n' "$LOG_FILE"
     rule
     printf '  %s常看命令%s\n' "$BD" "$N"
     rule
-    printf '    网关日志: journalctl -u hermes-gateway -f\n'
-    printf '    面板日志: journalctl -u hermes-dashboard -f\n'
+    if docker_backend; then
+        printf '    网关日志: docker compose -f %s logs -f gateway\n' "$COMPOSE_FILE"
+        printf '    面板日志: docker compose -f %s logs -f dashboard\n' "$COMPOSE_FILE"
+        printf '    平台结论: tail -f %s/logs/gateway.log\n' "$UHOME"
+    else
+        printf '    网关日志: journalctl -u hermes-gateway -f\n'
+        printf '    面板日志: journalctl -u hermes-dashboard -f\n'
+    fi
     printf '    Caddy  : journalctl -u caddy -f\n'
     printf '    改模型  : 菜单 2(或 hermes model)\n'
     printf '    改平台  : 菜单 3;改完记得重启网关(菜单 6 → 4)\n'

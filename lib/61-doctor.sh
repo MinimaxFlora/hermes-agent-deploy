@@ -26,8 +26,19 @@ diagnose() {
     fi
 
     printf '\n  %s安装%s\n' "$BD" "$N"
+    diag_add info "部署后端:$DEPLOY_BACKEND"
     if hermes_installed; then diag_add ok "Hermes:$(hermes_version 2>/dev/null || echo 未知)"; else diag_add fail "Hermes 未安装(菜单 1 一键部署)"; fi
-    [[ -d "$UHOME/hermes-agent/hermes_cli/web_dist" ]] && diag_add ok "界面产物存在(web_dist)" || diag_add warn "界面产物缺失(重新部署会自动修复)"
+    if docker_backend; then
+        if docker_daemon_ok; then
+            diag_add ok "Docker 守护进程正常($(docker --version 2>/dev/null | sed 's/^Docker version //; s/,.*//'))"
+        else
+            diag_add fail "Docker 守护进程无响应(systemctl status docker)"
+        fi
+        diag_add info "镜像:$(docker_image_ref)"
+        [[ -f "$COMPOSE_FILE" ]] && diag_add ok "Compose 配置:$COMPOSE_FILE" || diag_add fail "缺少 Compose 配置:$COMPOSE_FILE"
+    else
+        [[ -d "$UHOME/hermes-agent/hermes_cli/web_dist" ]] && diag_add ok "界面产物存在(web_dist)" || diag_add warn "界面产物缺失(重新部署会自动修复)"
+    fi
     local perms; perms="$(stat -c '%a' "$UHOME/.env" 2>/dev/null || echo "-")"
     [[ "$perms" == "600" ]] && diag_add ok ".env 权限 600" || diag_add fail ".env 权限异常($perms)"
 

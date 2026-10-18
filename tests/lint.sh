@@ -91,6 +91,8 @@ if grep -q '^main "\$@"' "$ROOT/bin/hermes-vps"; then c_ok "入口以 main \"\$@
 section "数据表"
 prov_n="$(bash -c ". '$ROOT/lib/31-model.sh' 2>/dev/null; for l in \"\${PROVIDERS[@]}\"; do echo \"\$l\"; done | awk -F'|' 'NF!=6' | wc -l")"
 assert_eq "0" "$prov_n" "模型提供商表字段数(应为 6)"
+models_n="$(bash -c ". '$ROOT/lib/31-model.sh' 2>/dev/null; for l in \"\${PROVIDER_MODELS[@]}\"; do echo \"\$l\"; done | awk -F'|' 'NF!=2' | wc -l")"
+assert_eq "0" "$models_n" "模型目录表字段数(应为 2)"
 plat_n="$(bash -c ". '$ROOT/lib/40-platform.sh' 2>/dev/null; for l in \"\${PLATFORMS[@]}\"; do echo \"\$l\"; done | awk -F'|' 'NF!=6' | wc -l")"
 assert_eq "0" "$plat_n" "消息平台表字段数(应为 6)"
 

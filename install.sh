@@ -13,9 +13,10 @@
 #     bash install.sh --system               装到 /usr/local/bin(root 用)
 #     bash install.sh --dry-run              只解析并下载,不安装
 #
-#  运行模式:工具本身两种身份都支持 —— root 跑 = 系统级(专用服务用户 +
-#    systemd 系统服务 + /etc 配置 + Caddy 80/443);普通用户跑 = 用户态
+#  运行模式:工具本身两种身份都支持 —— root 跑 = 系统级(默认 Docker Compose
+#    拉取官方镜像 + /etc 配置 + Caddy 80/443);普通用户跑 = 用户态原生安装
 #    (全部落在 $HOME,服务用 systemd --user,不可用时退回后台进程)。
+#    root 也可以用 --native 切回原地安装。
 #
 #  说明:脚本本体由 GitHub Actions 在打 tag 时构建并上传到 Release,
 #        仓库里只有模块化源码(lib/ + bin/),发布产物是自包含单文件。
@@ -43,10 +44,10 @@ usage() {
     cat <<'EOF'
   install.sh —— 从 GitHub Release 安装 / 升级 hermes-vps
 
-  一条命令(root:装到 /usr/local/bin;之后 sudo hermes-vps 打开菜单):
+  一条命令(root:装到 /usr/local/bin;之后 sudo hermes-vps 打开菜单,默认 Docker Compose):
     curl -fsSL https://raw.githubusercontent.com/MinimaxFlora/hermes-agent-deploy/main/install.sh | sudo bash
 
-  普通用户(装到 ~/.local/bin,不需要 root;工具两种身份都支持):
+  普通用户(装到 ~/.local/bin,不需要 root;默认原生用户态安装):
     curl -fsSL https://raw.githubusercontent.com/MinimaxFlora/hermes-agent-deploy/main/install.sh | bash
 
   其它参数(管道形式要用 bash -s -- 传参;已存到本地则直接 bash install.sh …):

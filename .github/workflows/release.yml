@@ -38,6 +38,7 @@ jobs:
           bash tests/lint.sh
           bash tests/smoke.sh
           bash tests/strict.sh
+          bash tests/docker.sh
           bash tests/caddyfile-validate.sh
           bash tests/caddy-routing.sh
 

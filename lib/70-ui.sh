@@ -83,6 +83,9 @@ status_panel() {
     row() { P+=("$1"); CL+=("$2"); }
 
     row "  模式        $(mode_label)" "  模式        ${C}$(mode_label)${N}"
+    if docker_backend; then
+        row "  部署        Docker Compose · $(docker_image_ref)" "  部署        ${G}Docker Compose${N}${DM} · $(docker_image_ref)${N}"
+    fi
     if hermes_installed; then
         row "  Hermes      ● $hv" "  Hermes      $(printf '%s' "$DOT_ON") $hv"
     else
@@ -147,7 +150,7 @@ main_menu() {
         status_panel
         printf '\n  %s主菜单%s\n' "$BD$W" "$N"
         rule
-        menu_item 1  "一键部署 / 重新部署" "安装 Hermes、面板、域名、平台接入"
+        menu_item 1  "一键部署 / 重新部署" "拉取官方镜像、Caddy 域名、模型与平台接入"
         menu_item 2  "模型提供商"         "填 API Key,并真实验证能否对话"
         menu_item 3  "消息平台"           "QQ / 微信 / 企业微信 / 飞书 / 钉钉 / TG"
         if [[ "$HV_MODE" == "system" ]]; then

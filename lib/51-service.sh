@@ -25,6 +25,12 @@ EOF
 }
 
 service_gateway_install() {
+    if docker_backend; then
+        docker_compose_up || return 1
+        docker_compose restart gateway >/dev/null 2>&1 || true
+        ok "网关容器已启动(Compose:$COMPOSE_FILE)"
+        return 0
+    fi
     if [[ "$HV_MODE" != "system" ]]; then user_service_install hermes-gateway gateway; return $?; fi
     require_root "安装网关系统服务"
     local unit="hermes-gateway.service" file="/etc/systemd/system/hermes-gateway.service"
@@ -87,6 +93,13 @@ EOF
 }
 
 service_dashboard_install() {
+    if docker_backend; then
+        docker_compose_up || return 1
+        docker_compose restart dashboard >/dev/null 2>&1 || true
+        ok "面板容器已启动(Compose:$COMPOSE_FILE)"
+        dashboard_ensure_host_ok
+        return 0
+    fi
     if [[ "$HV_MODE" != "system" ]]; then user_service_install hermes-dashboard dashboard; return $?; fi
     require_root "安装面板系统服务"
     local unit="hermes-dashboard.service" file="/etc/systemd/system/hermes-dashboard.service"
@@ -201,6 +214,7 @@ usermode_gateway_ctl() { # 网关的用户态生命周期(走官方),成功返�
 
 svc_state() { # active / failed / inactive / unknown
     local s="$1"
+    if docker_backend && [[ "$s" != "caddy" ]]; then docker_svc_state "$s"; return 0; fi
     if [[ "$HV_MODE" == "system" ]]; then systemctl is-active "$s" 2>/dev/null || echo unknown; return 0; fi
     # 用户态:我们自己的托管方式是"后台进程 + pidfile",必须先看它 ——
     # 只看 systemctl --user 会在"机器上有用户级 systemd、但我们的单元没装"时报 inactive,
@@ -229,6 +243,10 @@ svc_state() { # active / failed / inactive / unknown
 }
 svc_enabled() {
     local s="$1"
+    if docker_backend && [[ "$s" != "caddy" ]]; then
+        if [[ -f "$COMPOSE_FILE" ]]; then printf 'compose'; else printf 'unknown'; fi
+        return 0
+    fi
     if [[ "$HV_MODE" == "system" ]]; then systemctl is-enabled "$s" 2>/dev/null || echo unknown; return 0; fi
     if user_systemd_ok; then systemctl --user is-enabled "$s" 2>/dev/null || echo unknown; return 0; fi
     printf 'manual'
@@ -236,6 +254,7 @@ svc_enabled() {
 }
 svc_ctl() { # svc_ctl start|stop|restart|reload <svc>
     local action="$1" s="$2"
+    if docker_backend && [[ "$s" != "caddy" ]]; then docker_svc_ctl "$action" "$s"; return $?; fi
     if [[ "$HV_MODE" == "system" ]]; then systemctl "$action" "$s" >/dev/null 2>&1; return $?; fi
     # 用户级 systemd 可用 ≠ 我们的单元存在:盲目 systemctl --user restart <不存在的单元>
     # 只会失败(真机:网关/面板"重启失败",而服务其实是我们自己的后台进程)
@@ -408,6 +427,13 @@ start_service()   { local s; s="$(svc "$1")"; if svc_ctl start "$s"; then ok "$s
 stop_service()    { local s; s="$(svc "$1")"; if svc_ctl stop "$s"; then ok "$s 已停止"; else err "$s 停止失败"; fi; }
 restart_service() { local s; s="$(svc "$1")"; if svc_ctl restart "$s"; then ok "$s 已重启"; else err "$s 重启失败(看日志:$(svc_log_hint "$s"))"; fi; }
 restart_all_services() {
+    if docker_backend; then
+        docker_compose restart gateway dashboard >/dev/null 2>&1 || docker_compose_up >/dev/null 2>&1 || true
+        [[ "$(svc_state caddy)" == "active" ]] && svc_ctl reload caddy >/dev/null 2>&1 || true
+        sleep 1
+        info "已重启:$(service_brief)"
+        return 0
+    fi
     local s
     for s in hermes-gateway hermes-dashboard; do svc_ctl restart "$s" >/dev/null 2>&1 || true; done
     [[ "$(svc_state caddy)" == "active" ]] && svc_ctl reload caddy >/dev/null 2>&1 || true
@@ -417,6 +443,10 @@ restart_all_services() {
 }
 svc_log_hint() {
     local s="$1"
+    if docker_backend && [[ "$s" != "caddy" ]]; then
+        printf 'docker compose -f %s logs --tail 60 %s' "$COMPOSE_FILE" "$(docker_svc_name "$s")"
+        return 0
+    fi
     if [[ "$HV_MODE" == "system" ]]; then printf 'journalctl -u %s -n 50' "$s"; return 0; fi
     if user_systemd_ok && systemctl --user cat "$s" >/dev/null 2>&1; then
         printf 'journalctl --user -u %s -n 50' "$s"; return 0
@@ -440,6 +470,11 @@ service_logs() {
     if [[ "$s" == "hermes-gateway" && -f "$UHOME/logs/gateway.log" ]]; then
         dim "按 Ctrl+C 退出日志(网关:$UHOME/logs/gateway.log,平台连接结论在这里)"
         set +e; tail -n 60 -f "$UHOME/logs/gateway.log"; set -e
+        return 0
+    fi
+    if docker_backend; then
+        dim "按 Ctrl+C 退出日志(docker compose logs ${s})"
+        set +e; docker_logs "$s"; set -e
         return 0
     fi
     if [[ "$HV_MODE" == "system" ]]; then

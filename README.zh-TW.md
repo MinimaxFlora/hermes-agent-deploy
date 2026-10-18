@@ -4,10 +4,12 @@
 
 **在 VPS 上把 [Hermes Agent](https://github.com/NousResearch/hermes-agent) 一鍵裝好、配好、跑起來 —— 只要一個 `.sh` 檔案。**
 
-不用懂 Docker,不用手寫 Caddyfile,不必翻文件找環境變數。
+不用手寫 Docker Compose,不用手寫 Caddyfile,不必翻文件找環境變數。
 從裸機到「用網域以 HTTPS 打開管理面板 + 在手機 QQ / 微信裡和自己的 AI 助理對話」,全程輸入數字即可。
 
 [简体中文](README.md) · [English](README.en.md) · [**繁體中文**](README.zh-TW.md) · [日本語](README.ja.md) · [한국어](README.ko.md)
+
+> **2026-10 更新**:新部署預設使用 Docker Compose 官方鏡像(Docker Hub / GHCR),並支援從廠商 `/models` 選擇模型、密鑰以 `*` 顯示。完整說明見 [README.md](README.md) / [English](README.en.md);本翻譯可能落後。
 
 ![Platform](https://img.shields.io/badge/Platform-Debian%20%7C%20Ubuntu-A81D33?style=flat-square&logo=debian&logoColor=white)
 ![Arch](https://img.shields.io/badge/arch-amd64%20%7C%20arm64-2496ED?style=flat-square)

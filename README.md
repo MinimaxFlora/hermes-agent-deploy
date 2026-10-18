@@ -2,18 +2,18 @@
 
 # hermes-vps
 
-**在 VPS 上把 [Hermes Agent](https://github.com/NousResearch/hermes-agent) 一键装好、配好、跑起来 —— 只要一个 `.sh` 文件。**
+**在 VPS 上用 Docker Compose 把 [Hermes Agent](https://github.com/NousResearch/hermes-agent) 一键装好、配好、跑起来 —— 只要一个 `.sh` 文件。**
 
-不用懂 Docker,不用手写 Caddyfile,不用翻文档找环境变量。
-从裸机到「域名 HTTPS 打开管理面板 + 手机 QQ 里跟自己的 AI 助理对话」,全程点数字。
+不用手写 Compose / Caddyfile，不用翻文档找环境变量。
+从裸机到「域名 HTTPS 打开管理面板 + 手机 QQ 里跟自己的 AI 助理对话」，全程点数字。
 
 [**简体中文**](README.md) · [English](README.en.md) · [繁體中文](README.zh-TW.md) · [日本語](README.ja.md) · [한국어](README.ko.md)
 
 ![Platform](https://img.shields.io/badge/Platform-Debian%20%7C%20Ubuntu-A81D33?style=flat-square&logo=debian&logoColor=white)
 ![Arch](https://img.shields.io/badge/arch-amd64%20%7C%20arm64-2496ED?style=flat-square)
-![Single File](https://img.shields.io/badge/single%20file-one%20.sh-4EAA25?style=flat-square&logo=gnubash&logoColor=white)
-![No Docker](https://img.shields.io/badge/docker-not%20required-2496ED?style=flat-square&logo=docker&logoColor=white)
-![UI](https://img.shields.io/badge/UI-plain%20text%20menu-000000?style=flat-square&logo=gnometerminal&logoColor=white)
+![Deploy](https://img.shields.io/badge/deploy-Docker%20Compose-2496ED?style=flat-square&logo=docker&logoColor=white)
+![Image](https://img.shields.io/badge/image-Docker%20Hub%20%7C%20GHCR-0db7ed?style=flat-square)
+![UI](https://img.shields.io/badge/UI-plain%20text%20menu-000000?style=flat-square&logo=gnometerminal)
 ![License](https://img.shields.io/badge/license-MIT-yellow?style=flat-square)
 
 </div>
@@ -22,14 +22,15 @@
 
 ## 这是什么
 
-`hermes-vps` 是一个**单文件 Bash 工具**(约 2900 行,无第三方依赖),把 Hermes Agent 在 Linux 服务器上的整套部署与运维流程做成了交互式菜单:
+`hermes-vps` 是一个**单文件 Bash 工具**（无第三方依赖），把 Hermes Agent 在 Linux 服务器上的整套部署与运维流程做成了交互式菜单：
 
 ```
-装 Hermes → 选模型(自动验证能不能真的对话) → 接消息平台(QQ/微信/飞书…)
-        → Caddy 自动 HTTPS 域名访问 → systemd 常驻自启 → 自检 / 备份 / 更新 / 卸载
+装 Docker → 拉取官方镜像 → 生成 Compose → 选模型（自动读取厂商模型列表）
+          → 接消息平台（QQ/微信/飞书…）→ Caddy 自动 HTTPS 域名访问
+          → 容器常驻自启 → 自检 / 备份 / 更新 / 卸载
 ```
 
-**纯文本菜单**,输入编号即用,不弹任何对话框、不跳转官方界面 —— 所有配置都在脚本内部完成。
+**纯文本菜单**，输入编号即用，不弹任何对话框、不跳转官方界面 —— 所有配置都在脚本内部完成。
 
 ---
 
@@ -37,86 +38,80 @@
 
 | | |
 |---|---|
-| 🎯 **一个文件搞定一切** | 单文件 `.sh`,不装框架、不进 Docker、不留一堆脚本。`curl` 下来就能跑。 |
-| 🧠 **模型"能连上"是验证出来的,不是猜的** | 填完 Key 立刻直连厂商 API 校验(HTTP 200/401/402/404 逐条翻译),再通过 Hermes 真发一句话,证明「模型 → 工具链 → 回复」整条链路可用。 |
-| 💬 **平台接入同样要过官方 API 验票** | QQ 换取 `access_token`、飞书换 `tenant_access_token`、钉钉换 `accessToken`、Telegram `getMe`、Discord `users/@me`、Slack `auth.test`、Matrix `account/whoami` —— 厂商自己说"认",才算通。 |
-| 📱 **二维码直接出在脚本里** | QQ / 微信扫码授权走官方适配器函数,二维码打印在自己的终端,扫完自动写凭据、启用、重启网关并抓连接日志。不弹官方配置界面。 |
-| 🔐 **默认就是安全姿势** | 面板与 API **只监听 127.0.0.1**,公网一律经 Caddy;面板强制认证门;服务跑在专用系统用户 `hermes` 下;配置改动全部走官方 CLI(不手改 YAML);Caddyfile 校验通过才 reload。 |
-| 🇨🇳 **为国内网络准备** | 自动测速选择 GitHub / PyPI 加速通道,并把结果写进 git `insteadOf` 与 `uv.toml`,让后续 `hermes update` 也走加速。 |
-| 🩺 **自检与可回滚** | 22 项自检(服务/端口/认证门/API 鉴权/证书/凭据权限/平台连接/备份),备份恢复做过真机演练,一键更新带自动备份,卸载逐项列出路径逐条确认。 |
+| 🐳 **默认用 Docker Compose 部署** | 直接拉取 [`dockorae/hermes-agent`](https://hub.docker.com/r/dockorae/hermes-agent)（或 GHCR 镜像），不再在 VPS 上编译 Python/Node/浏览器；升级只需换镜像。 |
+| 🌐 **域名 + 自动 HTTPS 是主路径** | 填域名 → Caddy 自动签发证书 → `https://你的域名` 访问面板；面板与 API 始终只绑 `127.0.0.1`，公网只经 Caddy。 |
+| 🧠 **模型让你选，不用背模型名** | 填完 Key 自动请求厂商 `/models`，把真实可用模型列成菜单（DeepSeek V4.1 Flash、V4 Pro…）；接口不可用时用内置目录兜底，仍可手动输入。 |
+| 🔐 **密钥输入显示 `*`** | 输入 API Key / Bot Token 时逐字符回显 `*`，既能看见输入长度，又不会把密钥留在屏幕上。 |
+| 🎯 **模型“能连上”是验证出来的** | 直连厂商 API 校验（401/402/404 逐条翻译），再通过 Hermes 真发一句话，证明「模型 → 工具链 → 回复」整条链路可用。 |
+| 💬 **平台接入同样要过官方 API 验票** | QQ 换 `access_token`、飞书换 `tenant_access_token`、Telegram `getMe`、Discord `users/@me`、Slack `auth.test`、Matrix `account/whoami` —— 厂商自己说“认”，才算通。 |
+| 📱 **二维码直接出在脚本里** | QQ / 微信扫码授权走官方适配器函数，二维码打印在终端（Docker 模式在容器内执行同一套官方代码）。 |
+| 🛡 **默认就是安全姿势** | 容器内以 UID 10000 运行；数据目录 `/opt/hermes/.hermes` 属主同步；Compose 文件 0600；凭据文件 0600；Caddyfile 校验通过才 reload。 |
+| 🇨🇳 **为国内网络准备** | 自动测速 GitHub / PyPI 通道；镜像可选 Docker Hub 或 GHCR，并提示 registry mirror。 |
+| 🩺 **自检与可回滚** | 服务、端口、认证门、API 鉴权、证书、凭据权限、平台连接、备份逐项检查；更新前自动备份。 |
 | 🌏 **文档五语** | 简体中文 / English / 繁體中文 / 日本語 / 한국어。 |
 
 ---
 
-## 🧩 运行模式:root 与普通用户都支持
+## 🧩 运行模式
 
-> **与官方安装脚本的布局完全一致**:官方脚本本身是纯用户空间的(不需要 root、不用 sudo/apt,也不碰系统目录)——
-> 代码落在 `$HERMES_HOME/hermes-agent`、可执行文件是 `$HOME/.local/bin/hermes`、数据在 `$HERMES_HOME`(默认 `~/.hermes`)。
-> 本工具两种模式都显式传 `--hermes-home` / `--dir`,路径与官方一致;系统级模式只是额外把它交给专用服务用户 `hermes`
-> (家目录 `/opt/hermes`)运行,以便用 systemd 托管、与普通用户环境隔离。
-
-
-脚本启动时**自动判断身份**,两种模式功能都能用,不需要额外参数:
+脚本启动时**自动判断身份**，新机器 root 默认走 Docker Compose：
 
 | | **系统级(root)** | **用户态(普通用户)** |
 |---|---|---|
+| 部署方式 | **Docker Compose + 官方镜像(默认)** | 原生安装到 `$HOME`（不需要 Docker） |
+| 切换方式 | `--native` 可改回原地安装 | `--docker` 会提示用 sudo |
+| 数据 | `/opt/hermes/.hermes` | `~/.hermes` |
+| 服务 | 容器 `hermes-gateway` / `hermes-dashboard` | `systemd --user` 或后台进程 |
 | 配置/状态 | `/etc/hermes-vps` | `~/.config/hermes-vps` |
-| 日志 | `/var/log/hermes-vps` | `~/.local/state/hermes-vps` |
-| 备份 | `/var/backups/hermes-vps` | `~/.local/share/hermes-vps/backups` |
-| Hermes 数据 | `/opt/hermes/.hermes`(专用用户 `hermes`) | `~/.hermes`(你自己的账号) |
-| 服务 | `systemd` 系统服务(开机自启) | `systemd --user`;没有用户 DBus 时自动退回**后台进程 + PID 文件** |
-| 域名 + HTTPS(80/443) | ✅ 内置 Caddy 自动签证书 | ⚠️ 需要特权:选到该功能会提示用 `sudo` 重新执行 |
-| 防火墙 / swap / 系统依赖 | ✅ 自动 | ⚠️ 需要特权(会明确提示,不会静默失败) |
-| 模型 / 平台(QQ、微信…)/ 面板 / 备份 / 自检 | ✅ | ✅ |
+| 域名 + HTTPS | ✅ 内置 Caddy | ⚠️ 需 root：会提示 `sudo` 重跑 |
+| 模型 / 平台 / 面板 / 备份 / 自检 | ✅ 容器内执行官方 CLI | ✅ |
+| 防火墙 / swap / 系统依赖 | ✅ 自动 | ⚠️ 需要特权 |
+
+已有原生安装的机器会**自动识别为 native 模式**，继续用原来的 systemd 管理，不会被强行切到 Docker。
 
 ```bash
-# 普通用户直接跑(用户态,不碰系统目录)
-curl -fsSL https://raw.githubusercontent.com/MinimaxFlora/hermes-agent-deploy/main/install.sh | bash -s -- --user
-
-# root 直接跑(系统级,推荐:一台机器一个实例)
+# root：默认 Docker Compose（推荐，一台机器一个实例）
 curl -fsSL https://raw.githubusercontent.com/MinimaxFlora/hermes-agent-deploy/main/install.sh | sudo bash
+sudo hermes-vps
+
+# 普通用户：原生用户态（不碰系统目录，不需要 Docker）
+curl -fsSL https://raw.githubusercontent.com/MinimaxFlora/hermes-agent-deploy/main/install.sh | bash
+hermes-vps
 ```
 
-想看当前是什么模式:`hermes-vps mode`。菜单顶部状态面板也会显示「模式:…」,仅 root 可用的条目会标注「需要 root」。
-
-## 🚀 60 秒开始
+查看当前模式与后端：
 
 ```bash
-# 1) 登录服务器(root 或普通用户都行:两种身份都支持)
+hermes-vps mode      # 例：运行模式:系统级(root) · 后端:docker
+```
+
+## 🚀 开始使用
+
+```bash
+# 1) 登录服务器
 ssh root@<你的服务器>
 
-# 2) 安装并运行:root → 装到 /usr/local/bin;普通用户 → 装到 ~/.local/bin
-#    root
+# 2) 安装工具并打开菜单
 curl -fsSL https://raw.githubusercontent.com/MinimaxFlora/hermes-agent-deploy/main/install.sh | sudo bash
-sudo hermes-vps                     # 打开交互菜单(首次部署选 1,系统级)
+sudo hermes-vps
 
-#    普通用户(不需要 root;全部落在 $HOME:数据 ~/.hermes、服务 systemd --user)
-curl -fsSL https://raw.githubusercontent.com/MinimaxFlora/hermes-agent-deploy/main/install.sh | bash
-hermes-vps                          # 打开交互菜单(用户态)
+# 3) 首次部署选 1：
+#    填域名 → 选镜像来源（Docker Hub / GHCR）→ 选模型（列表里挑）
+#    剩下的它自己干完：装 Docker、拉镜像、起容器、配 Caddy、生成访问凭据
 ```
 
-安装器常用参数(管道形式要用 `bash -s --` 传参;已存到本地则直接 `bash install.sh …`):
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/MinimaxFlora/hermes-agent-deploy/main/install.sh | bash -s -- --check            # 只看已装版本 vs 最新版本
-curl -fsSL https://raw.githubusercontent.com/MinimaxFlora/hermes-agent-deploy/main/install.sh | bash -s -- --version v1.0.0   # 装指定版本
-curl -fsSL https://raw.githubusercontent.com/MinimaxFlora/hermes-agent-deploy/main/install.sh | bash -s -- --user             # 明确装到 ~/.local/bin
-curl -fsSL https://raw.githubusercontent.com/MinimaxFlora/hermes-agent-deploy/main/install.sh | bash -s -- --system           # 明确装到 /usr/local/bin(需 root)
-```
-
-首次进入菜单选 `1` 一键部署 —— 填域名(可留空)、选模型提供商,剩下的它自己干完。
-全过程约 5~15 分钟(取决于机器与网络)。
+全过程约 3~10 分钟（主要耗在拉取约 1GB 的镜像）。
 
 ### 前置条件
 
 | 项目 | 要求 |
 |---|---|
-| 系统 | Debian 10+ / Ubuntu 20.04+(amd64 / arm64) |
-| 权限 | root |
-| 内存 | ≥ 1GB(小于 1.8GB 且无 swap 时,脚本会自动创建 2GB swapfile 防 OOM) |
-| 磁盘 | ≥ 2GB 可用 |
-| 域名 | 可选。要 `https://域名` 访问需 A 记录指向本机公网 IP,并放通 80/443 |
-| 网络 | 直连或受限都能用:自动探测加速通道 |
+| 系统 | Debian 10+ / Ubuntu 20.04+（amd64 / arm64） |
+| 权限 | root（Docker 部署）；普通用户可用原生模式 |
+| 内存 | ≥ 1GB；镜像运行本身比本地编译省内存 |
+| 磁盘 | ≥ 5GB 可用（镜像解压后约 3GB，另留数据与备份） |
+| 域名 | 要 `https://域名` 访问需 A 记录指向本机公网 IP，并放通 80/443 |
+| 网络 | 直连或受限都能用；Docker Hub 慢可切 GHCR 或配置 registry mirror |
 
 ---
 
@@ -126,28 +121,30 @@ curl -fsSL https://raw.githubusercontent.com/MinimaxFlora/hermes-agent-deploy/ma
   ╭──────────────────────────────────────────────────────────────────────────╮
   │  Hermes Agent · VPS 一键部署与管理                                       │
   │  模型 / QQ / 微信 / 域名 HTTPS / 自检备份                                │
-  │  v1.0.0  ·  Debian GNU/Linux 13 (trixie) x86_64  ·  2C / 967MB           │
+  │  v1.1.0  ·  Debian GNU/Linux 13 (trixie) x86_64  ·  2C / 967MB           │
   ╰──────────────────────────────────────────────────────────────────────────╯
 
   运行状态 ──────────────────────────────────────────────────────────────
-  Hermes      ● v0.21.5
+  模式        系统级(root)
+  部署        Docker Compose · dockorae/hermes-agent:latest
+  Hermes      ● v0.22.2
   服务        网关 ●  面板 ●  Caddy ●
   域名        panel.example.com(证书剩 89 天)
-  模型        deepseek / deepseek-chat(已验证)
+  模型        deepseek / deepseek-flash(已验证)
   平台        已配置 2 个,已连接 2 个
   ──────────────────────────────────────────────────────────────────────────
 
   主菜单
   ──────────────────────────────────────────────────────────────────────────
-     1) 一键部署 / 重新部署       安装 Hermes、面板、域名、平台接入
-     2) 模型提供商                填 API Key,并真实验证能否对话
+     1) 一键部署 / 重新部署       拉取官方镜像、Caddy 域名、模型与平台接入
+     2) 模型提供商                选厂商、填 Key、从真实模型列表里挑
      3) 消息平台                  QQ / 微信 / 企业微信 / 飞书 / 钉钉 / TG
      4) 域名与反向代理            Caddy 自动 HTTPS、证书状态
      5) 面板与 API                登录密码、公网地址、/v1 开关
      6) 服务管理                  启动 / 停止 / 重启 / 看日志
      7) 自检与诊断                服务、端口、认证门、API、证书、备份
      8) 备份与恢复                打包配置与密钥,可一键回滚
-     9) 更新                      立即更新 / 每日自动更新
+     9) 更新                      拉取新镜像 / 每日自动检查
     10) 防火墙与安全              只放行 SSH / 80 / 443
     11) 网络加速探测              GitHub / PyPI 国内镜像自动选优
     12) 使用说明 / 帮助           常用命令与路径
@@ -160,41 +157,57 @@ curl -fsSL https://raw.githubusercontent.com/MinimaxFlora/hermes-agent-deploy/ma
 
 ## 🧭 功能地图
 
-菜单里的每一项都有等价的子命令,方便脚本化 / 无人值守。
+菜单里的每一项都有等价的子命令，方便脚本化 / 无人值守。
 
 | 菜单 | 子命令 | 说明 |
 |---|---|---|
-| 1 一键部署 | `install [--yes]` | 10 步流水线,幂等可重跑 |
-| 2 模型提供商 | `model` | 19 家内置 + 自定义 OpenAI 兼容端点;直连校验 + 真实对话验证 |
-| 3 消息平台 | `platform` | 扫码类走脚本内二维码;凭据类填完即验票 |
+| 1 一键部署 | `install [--yes] [--image <镜像>]` | 拉镜像 → 起容器 → 配面板/域名，幂等可重跑 |
+| 2 模型提供商 | `model` | 19 家内置 + 自定义端点；自动拉 `/models` 选模型；Key 掩码输入 |
+| 3 消息平台 | `platform` | 扫码类走脚本内二维码；凭据类填完即验票 |
 | 4 域名与反代 | `domain <域名>` | 渲染 Caddyfile → `caddy validate` → 热重载 → 申请证书 |
 | 5 面板与 API | `panel` | 重置密码、公网地址、`/v1` 开关、登录链路实测 |
-| 6 服务管理 | `service start\|stop\|restart\|status\|logs` | 网关 / 面板 / Caddy |
-| 7 自检与诊断 | `diagnose` | 22 项检查,逐条 ✔/✘ |
-| 8 备份与恢复 | `backup` / `restore` | 含配置与凭据;恢复就地合并,不破坏安装 |
-| 9 更新 | `update` / `update auto-update on\|off` | 更新前自动备份;每日 04:30 自动检查 |
-| 10 防火墙 | `firewall` | 只**增加**放行,绝不动既有规则 |
+| 6 服务管理 | `service start\|stop\|restart\|status\|logs` | 容器 / Caddy |
+| 7 自检与诊断 | `diagnose` | 服务、端口、认证门、API、证书、备份 |
+| 8 备份与恢复 | `backup` / `restore` | 含数据、Compose、状态与凭据 |
+| 9 更新 | `update` / `update auto-update on\|off` | 拉取新镜像并重建容器；更新前自动备份 |
+| 10 防火墙 | `firewall` | 只**增加**放行，绝不动既有规则 |
 | 11 网络加速 | `mirror --force` | 重新测速并应用 |
 | 12 帮助 | `help` | 命令与路径速查 |
-| 13 卸载 | `uninstall` | 先列精确路径,再逐条确认 |
-| — | `selftest` | 检查脚本自身(语法/数据表/Caddyfile 渲染/真实 `caddy validate`) |
+| 13 卸载 | `uninstall` | 先列精确路径，再逐条确认 |
+| — | `selftest` | 检查脚本自身（语法/数据表/Compose 渲染/Caddyfile） |
 | — | `self-install` | 把自己装到 `/usr/local/bin/hermes-vps` |
 
-通用参数:`--yes`(全部自动确认)、`--non-interactive`(不提问)、`--force`、`--skip-browser`(少装浏览器组件,省内存)、`--no-color`、`--debug`。
+通用参数：`--yes`、`--non-interactive`、`--force`、`--docker`、`--native`、`--image <镜像>`、`--no-color`、`--debug`。
 
 ---
 
 ## 🤖 模型提供商
 
-内置 19 家,填 Key 即用:
+内置 19 家：
 
-`DeepSeek` · `OpenRouter` · `智谱 GLM` · `Kimi / Moonshot` · `阿里云百炼 Qwen` · `MiniMax` · `OpenAI` · `Anthropic` · `Google Gemini` · `xAI Grok` · `DeepInfra` · `NovitaAI` · `Fireworks` · `NVIDIA NIM` · `Hugging Face` · `小米 MiMo` · `腾讯 TokenHub` · `阶跃星辰` · **自定义 OpenAI 兼容端点**(vLLM / Ollama / One-API / 自建中转)
+`DeepSeek` · `OpenRouter` · `智谱 GLM` · `Kimi / Moonshot` · `阿里云百炼 Qwen` · `MiniMax` · `OpenAI` · `Anthropic` · `Google Gemini` · `xAI Grok` · `DeepInfra` · `NovitaAI` · `Fireworks` · `NVIDIA NIM` · `Hugging Face` · `小米 MiMo` · `腾讯 TokenHub` · `阶跃星辰` · **自定义 OpenAI 兼容端点**（vLLM / Ollama / One-API / 自建中转）
 
-**两级验证,拒绝"看起来配好了"**
+### 不再让你手写模型名
 
-1. **直连校验** —— 直接请求该厂商的 `/chat/completions`,2 秒内给结论,并把 HTTP 状态翻译成人话:
-   `401 密钥被拒` / `402 余额不足` / `404 模型名或端点不对` / `429 限流或额度用尽` / `000 网络不可达`,并附厂商原始错误信息。
-2. **真实对话** —— 通过 Hermes 发一句「只回答两个字:可用」,验证模型、工具链、会话与回复全链路。
+配置流程：
+
+1. 输入 API Key（显示为 `**********`，可退格；已保存的 Key 直接回车保留）。
+2. 脚本用这个 Key 请求厂商的 `/models` 接口，把**真实可用模型**列出来：
+
+   ```
+   选择模型 · DeepSeek 官方
+     来源:厂商接口 · 共 2 个 · 第 1/1 页
+        1) deepseek-flash     DeepSeek V4.1 Flash
+        2) deepseek-v4-pro    DeepSeek V4 Pro
+   ```
+
+3. 输入编号即可；模型多时支持 `n` 下一页、`p` 上一页、`s` 搜索、`m` 手动输入。
+4. 接口不可用（Key 错、网络不通、厂商不提供列表）时，自动退回**内置模型目录**，DeepSeek 仍会给出 `deepseek-flash` / `deepseek-v4-pro` / `deepseek-chat` / `deepseek-reasoner`。
+
+**两级验证，拒绝“看起来配好了”**
+
+1. **直连校验**：请求 `/chat/completions`，把 `401 密钥被拒`、`402 余额不足`、`404 模型名或端点不对`、`429 限流`、`000 网络不可达` 翻译成人话。
+2. **真实对话**：通过 Hermes 发一句「只回答两个字：可用」，验证模型、工具链、会话与回复全链路。
 
 ---
 
@@ -202,177 +215,159 @@ curl -fsSL https://raw.githubusercontent.com/MinimaxFlora/hermes-agent-deploy/ma
 
 | 平台 | 接入方式 | 脚本内的验证手段 |
 |---|---|---|
-| **QQ 机器人** | 官方 Bot API v2(扫码上线 或 AppID/Secret) | `getAppAccessToken` 换取 token,官方认账才通过 |
-| **个人微信** | iLink 扫码登录(二维码出在脚本里) | 登录态落盘 + 网关连接日志 |
-| **企业微信** | AI 机器人(Bot ID / Secret) | WebSocket 网关连接日志 |
-| **飞书 / Lark** | 长连接(APP ID / Secret) | 换取 `tenant_access_token` |
-| **钉钉** | Stream 模式(ClientID / Secret) | 换取 `accessToken` |
+| **QQ 机器人** | 官方 Bot API v2（扫码上线 或 AppID/Secret） | `getAppAccessToken` 换取 token |
+| **个人微信** | iLink 扫码登录（二维码出在脚本里） | 登录态落盘 + 网关连接日志 |
+| **企业微信** | AI 机器人（Bot ID / Secret） | WebSocket 网关连接日志 |
+| **飞书 / Lark** | 长连接（APP ID / Secret） | 换取 `tenant_access_token` |
+| **钉钉** | Stream 模式（ClientID / Secret） | 换取 `accessToken` |
 | **Telegram** | Bot Token | `getMe` |
 | **Discord** | Bot Token | `users/@me` |
-| **Slack** | Bot + App Token(Socket Mode) | `auth.test` |
+| **Slack** | Bot + App Token（Socket Mode） | `auth.test` |
 | **Matrix** | Homeserver + Access Token | `account/whoami` |
 | **WhatsApp** | 扫码配对 | 网关连接日志 |
 | **邮件助手** | IMAP + SMTP | 网关连接日志 |
-| **OpenAI 兼容 API** | API Key + 端口 | 无 key → 401,带 key → 200 |
+| **OpenAI 兼容 API** | API Key + 端口 | 无 key → 401，带 key → 200 |
 
-配置完成后自动重启网关、抓取**本次启动以来**的连接日志给结论(面板顶部状态栏同步显示「已连接 / 失败」),还可以让机器人给你发一条测试消息验证收发。
+Docker 模式下扫码助手在容器内用官方运行时执行（`/opt/hermes/.venv`），二维码照常打印在脚本终端。配置完成后自动重启网关、抓取**本次启动以来**的连接日志给结论。
 
-> 扫码类平台的二维码直接渲染在本脚本的终端里(通过官方适配器函数),**不会跳到官方配置界面**;想用官方界面的人自己敲 `hermes gateway setup` 即可。
+> 扫码类平台的二维码直接渲染在脚本终端里，**不会跳到官方配置界面**；想用官方界面的人自己敲 `hermes gateway setup` 即可。
 
 ---
 
 ## 🔐 安全设计
 
-- **最小暴露面**:管理面板(9119)与 OpenAI 兼容 API(8642)**只绑 `127.0.0.1`**;公网访问一律经 Caddy 反代。
-- **认证门必开**:面板强制 Basic Auth + 会话密钥(随机生成),未登录访问被拦截;`public_url` 写成 `https://域名`,杜绝"声明了公网却无认证"的窗口。
-- **独立服务用户**:网关与面板以系统用户 `hermes` 运行(非 root),`HERMES_HOME=/opt/hermes/.hermes`;家目录禁止交互登录。
-- **配置改动走官方 CLI**:`hermes config set`(不手改 `config.yaml`,避免缩进破坏运行中的网关);密钥只写 `.env`(0600)。
-- **改配置先校验再生效**:Caddyfile 先 `caddy validate --adapter caddyfile`,通过才 reload;原文件自动备份保留 5 份。
-- **防火墙只做加法**:只放行 SSH(自动识别端口)+ 80 + 443,不删除、不改动任何既有规则。
-- **凭据文件 0600**:面板账号、密码、API Key、会话密钥集中写在 `/etc/hermes-vps/credentials.txt`。
-- **删除类操作永不静默**:卸载、恢复、清理备份都会先列出精确路径,逐条确认。
+- **最小暴露面**：容器里 dashboard 只绑 `127.0.0.1:9119`（可用 `DASH_PORT` 覆盖），API 只绑 `127.0.0.1:8642`；公网一律经主机 Caddy。
+- **容器非 root**：容器内进程以 UID/GID `10000` 运行，数据目录由 stage2 自动 chown；宿主机上的 `.env`、`config.yaml` 属主同步为 10000。
+- **认证门必开**：面板强制 Basic Auth + 会话密钥（随机生成）；`public_url` 写成 `https://域名`。
+- **配置走官方 CLI**：在容器内以 10000 用户执行 `hermes config set`，不手改 YAML。
+- **密钥输入掩码**：API Key / Bot Token 输入时只显示 `*`。
+- **文件权限**：Compose 0600、`.env` 0600、凭据文件 0600；Caddyfile 先校验再 reload。
+- **删除类操作永不静默**：卸载、恢复、清理备份都会先列出精确路径，逐条确认。
 
 ---
 
 ## 🏗 架构与落盘
 
 ```
-源码(仓库里只有这些;发布产物由 CI 生成,不入库)
-  lib/00-common.sh       核心:常量 / 颜色 / 日志 / 输入原语 / 状态存储 / 以服务用户执行
-  lib/10-input.sh        交互原语(纯文本,无 whiptail)
-  lib/11-state.sh        键值存储 / 状态 / 凭据
-  lib/12-run.sh          以服务用户身份执行
-  lib/20-system.sh       发行版探测 / 依赖 / swap 保护
-  lib/21-mirror.sh       网络加速(GitHub / PyPI 测速选优)
-  lib/22-firewall.sh     防火墙(只增不减)
-  lib/23-probe.sh        通用探测(端口 / 服务 / 公网 IP / 域名解析)
-  lib/30-hermes.sh       服务用户 + Hermes 安装与更新
-  lib/31-model.sh        模型提供商表 + 两级连通验证
-  lib/40-platform.sh     消息平台表 + 厂商 API 验票 + 脚本内扫码
-  lib/50-webui.sh        面板认证门 / 凭据 / 公网地址
-  lib/51-service.sh      systemd 单元与服务控制
-  lib/52-caddy.sh        Caddy 安装 / 渲染 / 校验 / 证书
-  lib/60-backup.sh       备份恢复 / 更新与自动更新
-  lib/61-doctor.sh       自检诊断(22 项)
-  lib/62-lifecycle.sh    卸载(逐项确认)
-  lib/70-ui.sh           横幅 / 状态面板 / 各菜单
-  lib/71-deploy.sh       一键部署编排
-  lib/72-help.sh         使用说明
-  lib/80-cli.sh          参数解析与子命令分发
-  lib/90-selftest.sh     脚本自检
-  bin/hermes-vps         入口(开发时 `bash bin/hermes-vps` 会自动载入 lib/)
-  build.sh               拼装成 dist/hermes-vps.sh
-  install.sh             从 Release 安装 / 升级(自动取最新版 + sha256 校验)
-  tests/                 lint / smoke / strict / 真实 caddy 校验 / 路由行为 / 真机验收
-  VERSION                版本号;打 tag 必须是 v$VERSION
-  .github/workflows/     ci.yml(全量测试) + release.yml(打 tag 时构建并发布)
+主机
+├── Docker Engine
+│   ├── hermes-gateway    (network_mode: host, command: gateway run)
+│   └── hermes-dashboard  (network_mode: host, command: dashboard --host 127.0.0.1 --port 9119)
+├── Caddy (80/443, 自动 HTTPS) → 127.0.0.1:9119 / 127.0.0.1:8642
+└── /opt/hermes/.hermes → 挂载到容器 /opt/data
 ```
 
-**发布流程**:改 `VERSION` → 打 tag `v1.0.0` → Actions 跑全量测试、构建 `hermes-vps.sh`、生成 `.sha256` 并创建 Release。用户端只跑 `install.sh`,永远拿到同一份自包含脚本(仓库里没有生成物,避免"源码与产物不一致")。
+源码（仓库里只有这些；发布产物由 CI 生成，不入库）：
+
+```
+lib/00-common.sh       核心:常量 / 颜色 / 日志 / 输入原语 / 状态存储
+lib/10-input.sh        交互原语（含 * 掩码输入）
+lib/11-state.sh        键值存储 / 状态 / 凭据
+lib/12-run.sh          以用户身份 / 容器内执行
+lib/13-docker.sh       Docker Engine / Compose / 镜像与服务控制
+lib/20-system.sh       发行版探测 / 依赖 / swap 保护
+lib/21-mirror.sh       网络加速（GitHub / PyPI 测速选优）
+lib/22-firewall.sh     防火墙（只增不减）
+lib/23-probe.sh        通用探测（端口 / 服务 / 公网 IP / 域名解析）
+lib/30-hermes.sh       Docker 部署 / 原生安装与更新
+lib/31-model.sh        模型提供商表 + 模型目录 + 两级连通验证
+lib/40-platform.sh     消息平台表 + 厂商 API 验票 + 脚本内扫码
+lib/50-webui.sh        面板认证门 / 凭据 / 公网地址
+lib/51-service.sh      服务控制（Docker / systemd / 后台进程）
+lib/52-caddy.sh        Caddy 安装 / 渲染 / 校验 / 证书
+lib/60-backup.sh       备份恢复 / 更新与自动更新
+lib/61-doctor.sh       自检诊断
+lib/62-lifecycle.sh    卸载（逐项确认）
+lib/70-ui.sh           横幅 / 状态面板 / 各菜单
+lib/71-deploy.sh       一键部署编排
+lib/72-help.sh         使用说明
+lib/80-cli.sh          参数解析与子命令分发
+lib/90-selftest.sh     脚本自检
+bin/hermes-vps         入口（开发时 `bash bin/hermes-vps` 会自动载入 lib/）
+build.sh               拼装成 dist/hermes-vps.sh
+install.sh             从 Release 安装 / 升级（自动取最新版 + sha256 校验）
+tests/                 lint / smoke / strict / docker / 真实 caddy 校验 / 路由 / 真机验收
+```
+
+**发布流程**：改 `VERSION` → 打 tag `v1.1.0` → Actions 跑全量测试、构建 `hermes-vps.sh`、生成 `.sha256` 并创建 Release。用户端只跑 `install.sh`，永远拿到同一份自包含脚本。
 
 | 路径 | 内容 |
 |---|---|
-| `/opt/hermes/.hermes` | Hermes 数据:配置、`.env`(密钥)、skills、会话、日志 |
-| `/opt/hermes` | 服务用户 `hermes` 的家目录(含运行时与虚拟环境) |
-| `/etc/hermes-vps/state.env` | 本工具状态(域名、开关、版本) |
-| `/etc/hermes-vps/credentials.txt` | 面板账号 / 密码 / API Key / 会话密钥(0600) |
-| `/etc/hermes-vps/mirror.env` | 已选用的加速通道 |
-| `/etc/caddy/Caddyfile` | 反向代理配置(改动前自动备份到 `.bak/`) |
-| `/var/backups/hermes-vps/` | 备份包(最近 7 份) |
-| `/var/log/hermes-vps/hermes-vps.log` | 本工具操作日志 |
-| `$HERMES_HOME/logs/gateway.log` | 网关运行日志(**平台连接结论在这里**) |
+| `/opt/hermes/.hermes` | Hermes 数据：配置、`.env`、skills、会话、日志（容器内 `/opt/data`） |
+| `/etc/hermes-vps/docker-compose.yml` | 生成的 Compose 配置（0600） |
+| `/etc/hermes-vps/state.env` | 本工具状态（域名、镜像、开关） |
+| `/etc/hermes-vps/credentials.txt` | 面板账号 / 密码 / API Key / 会话密钥（0600） |
+| `/etc/caddy/Caddyfile` | 反向代理配置（改动前自动备份） |
+| `/var/backups/hermes-vps/` | 备份包（最近 7 份） |
+| `$HERMES_HOME/logs/gateway.log` | 网关运行日志（平台连接结论在这里） |
 
-systemd 单元:`hermes-gateway.service`、`hermes-dashboard.service`、`caddy.service`,全部开机自启。
+容器：`hermes-gateway`、`hermes-dashboard`，`restart: unless-stopped`；主机 systemd 只负责 `docker` 与 `caddy`。
 
 ---
 
 ## 🧪 质量与验证
 
-本项目在**真实 VPS(Debian 13,2 核 / 967MB)上完成验收**,不是"本地跑通就算":
-
 | 验收项 | 结果 |
 |---|---|
-| 一键部署 10 步流水线 | 全程 0 报错,幂等重跑亦干净 |
-| 自检 `diagnose` | **22 项全通过**(服务 / 端口 / 认证门 / API 鉴权 / 证书 / 凭据权限 / 平台连接 / 备份) |
-| Caddyfile | 调用生产函数渲染 + **真实 `caddy validate`** 通过,HTTPS 探活 200,证书自动签发 |
-| 面板认证门 | 未登录 302/401 拦截;正确凭据登录 200 并下发会话 Cookie;错误密码 401;经域名 HTTPS 登录 200 |
-| OpenAI 兼容 API | 无 key 401、带 key 200,反代路径可用 |
-| 消息平台 | QQ 机器人完成**真实收发**(接收消息 → 3.7s 生成回复 → 成功投递) |
-| 备份 / 恢复 | 备份 → 删除标记文件 → 恢复:标记回归、服务自动拉起、面板 200 |
-| 卸载预览 | 逐项列出路径与用途,默认全部保留 |
-| 脚本自检 | `selftest` 覆盖语法、数据表、Caddyfile 渲染与真实二进制校验 |
+| 静态检查 `tests/lint.sh` | 52 项全通过（语法 / 数据表 / 构建可复现） |
+| 冒烟 `tests/smoke.sh` | 67 项全通过 |
+| 严格模式 `tests/strict.sh` | 15 项全通过（`set -Eeuo pipefail` 下原语不中止） |
+| Docker 后端 `tests/docker.sh` | 20 项全通过（镜像地址 / Compose 渲染 / 模型目录 / 后端选择） |
+| 真实镜像部署 | 在 Debian 13 + Docker 26 上以 `dockorae/hermes-agent:0.22.2` 完成部署：容器启动、面板 200、`hermes --version` 正常、`config set/get` 写入 `/opt/data` |
+| 模型选择 | 内置目录 + 非交互默认值；交互式选择（编号 / 手动 / 默认）实测通过 |
+| 掩码输入 | pty 实测：输入 10 位显示 `**********`，变量值完整 |
+| 备份 | 备份包含 `.hermes`、`state.env`、`docker-compose.yml`；恢复会先停容器再合并 |
+| Caddyfile | 调用生产函数渲染 + 真实 `caddy validate` 通过 |
 
 ---
 
 ## 🛠 常见问题
 
-**证书签不下来?**
-域名 A 记录必须指向本机公网 IP,且 80/443 对公网可达(云厂商安全组也要放行)。`hermes-vps diagnose` 会逐项指出问题。
+**镜像拉取慢 / 失败？**
+部署时可选择 GHCR（`ghcr.io/minimaxflora/hermes-agent`）；国内机器也可先给 Docker 配置 registry mirror。Docker Hub 与 GHCR 的内容和 digest 一致。
 
-**1GB 小内存机器装不动?**
-脚本检测到内存 < 1.8GB 且无 swap 时会自动创建 2GB swapfile。这是实测教训:官方安装器在 1GB 无 swap 的机器上被打包环节 OOM 杀过。
+**怎么固定版本？**
+部署时镜像标签填版本号（如 `0.22.2`），或 `hermes-vps install --image dockorae/hermes-agent:0.22.2`。`latest` 会随新版本移动。
 
-**国内机器下载慢 / 失败?**
-菜单 11 会测速并选择 GitHub / PyPI 加速通道,同时写进 git `insteadOf` 与用户级 `uv.toml`,让后续 `hermes update` 也走加速。
+**机器上已经有原生安装的 Hermes？**
+脚本检测到原生 launcher 会自动使用 native 模式，继续用 systemd 管理。想改为 Docker：先停掉原生服务（`systemctl disable --now hermes-gateway hermes-dashboard`），再 `sudo hermes-vps install --docker`；数据目录相同，不会丢配置。
 
-**改完平台没反应?**
-必须重启网关(菜单 6 → 4),或 `hermes-vps service restart gateway`。
+**面板 9119 端口被占用？**
+Docker 模式默认用 `DASH_PORT=9119`；可在部署前 `export DASH_PORT=19119`，Compose 的 `dashboard --port`、Caddyfile 和状态面板都会跟随。
 
-**平台显示"失败"但没有明显报错?**
-看 `$HERMES_HOME/logs/gateway.log`(菜单 6 → 7 直接 tail 它)。注意区分**本次启动以来**的日志与上一次运行的残留告警。
+**证书签不下来？**
+域名 A 记录必须指向本机公网 IP，且 80/443 对公网可达（云厂商安全组也要放行）。`hermes-vps diagnose` 会逐项指出问题。
 
-**卸载会删什么?**
-菜单 13 会先逐项列出每个路径与用途,再一条条问你,默认全部保留;备份目录从不删除。
+**访问域名报 `400 Invalid Host header`？**
+官方面板只接受绑定主机名或 `dashboard.public_url` 里的主机名，且这是**启动时**读取的。执行 `hermes-vps domain <域名>` 会写入 `public_url` 并自动重启面板；手动改了配置则 `hermes-vps service restart dashboard`。
+
+**改完平台没反应？**
+必须重启网关：菜单 6 → 4，或 `hermes-vps service restart gateway`。
+
+**平台显示“失败”但没有明显报错？**
+看 `$HERMES_HOME/logs/gateway.log`（菜单 6 → 7 直接 tail 它），注意只看**本次启动以来**的片段。
+
+**卸载会删什么？**
+菜单 13 会先逐项列出每个路径与用途，再一条条问你，默认全部保留；Docker 容器会单独确认后 `compose down`；备份目录从不删除。
 
 ---
 
-### 访问域名报 `{"detail":"Invalid Host header. Dashboard requests must use the bound hostname or the configured public hostname."}`?
+## 🧰 开发者备忘：真机踩过的坑
 
-官方面板只接受**绑定主机名(127.0.0.1)**或 **`dashboard.public_url` 里的主机名**,而且这个白名单是**面板启动时读取**的。
-所以配好域名后必须重启面板让新域名生效:
-
-```bash
-sudo systemctl restart hermes-dashboard     # 系统级(root 安装)
-systemctl --user restart hermes-dashboard   # 用户态(或菜单 6 重启;后台进程模式用菜单 6 重启)
-```
-
-`hermes-vps diagnose` 会有一项「面板接受域名 Host(HTTP xxx)」,出现 400 就是上面这个原因。
-另外本工具**只以域名作为访问地址**:`127.0.0.1` 在 VPS 上你访问不到,所以它不会出现在任何提示或凭据文件里(IP 直连也可能被面板的 Host 校验拒绝)。
-
-### 微信/QQ 上机器人回 `Hi! I don't recognize you yet... Your pairing code: W6FFKXYC`
-
-这是平台的**配对(pairing)授权**:默认「陌生人先申请、由你批准」。脚本里已经做了内建支持,**不用手敲官方命令**:
-
-```bash
-hermes-vps pairing list                       # 看谁在申请
-hermes-vps pairing all                        # 一键放行全部待批准(最省事)
-hermes-vps pairing watch 180                  # 自动放行:监听 3 分钟,有人发消息就立刻批准
-hermes-vps pairing approve weixin W6FFKXYC    # 用对方发来的配对码放行
-hermes-vps pairing open                       # 整体关闭配对(任何人可私聊,不建议)
-```
-
-菜单里同样有:主菜单 **3**(消息平台)→ 输入 **`p`** = 配对审批(查看 / 一键放行 / 自动监听 / 输入配对码 / 策略)。
-另外:配置平台时如果选了「配对审批」,连上后脚本会**自动检测并放行**待批准请求,并可选监听 2 分钟。
-
-## 🧰 开发者备忘:真机踩过的坑
-
-改这个脚本前值得一读(全部来自真实部署):
-
-1. `set -Eeuo pipefail` 下,**函数最后一条语句**若是 `[[ ]] && cmd`,判定失败会让函数返回非零,`set -e` 在调用处终止脚本 —— 结尾统一 `return 0` 或改写成 `if`。
-2. `grep` 无匹配返回 1,经 `pipefail` 会中止;所有"取值"函数必须显式兜底。
-3. `openssl rand | tr | head` 会因 SIGPIPE 让上游报错;改用 `openssl rand -base64` 后截断。
-4. `ERR` 陷阱要判断 `case "$-" in *e*)`,否则 `set +e` 的容错回退路径会被误判为致命错误。
-5. `caddy validate/fmt` 必须带 `--adapter caddyfile`(临时文件名没有提示,会被当 JSON 解析)。
-6. Caddy 运行前要准备好 `/var/log/caddy` 目录与属主,否则服务起不来。
-7. 面板健康检查要等 `HERMES_DASHBOARD_READY`,固定 `sleep 2` 会误报。
-8. `tar` 退出码 1 是无害警告,2 才是真失败;回退分支里别引用已删除的临时目录。
-9. 恢复备份要「就地合并 + 只挪走将被覆盖的文件」,整目录替换会把安装弄残。
-10. 中文字符在终端占 2 列,画对齐的菜单必须按**显示宽度**算;`case` 单行写法分支间必须是 `;;` 而非 `;`。
-11. 源码带 CRLF 时在 Linux 报 `$'\r': command not found` —— 提交前统一 LF(`.gitattributes` 已锁)。
-12. 平台的连接结论写在 Hermes 自己的 `logs/gateway.log`(不是 journald),且必须只看**本次启动以来**的片段,否则会被上一轮运行的失败告警误导。
-13. 在自己脚本里跑官方 Python 逻辑,要用官方启动器的 `--run-module`(依赖装在工具自己的运行时里),并**以服务用户身份**执行。
-14. 需要 `qrcode` 才能渲染终端二维码:官方 `hermes pm install --extra messaging`。
-15. 备份要排除可重装内容(源码树、Python 运行时),否则体积从 ~100MB 涨到 ~800MB。
+1. `set -Eeuo pipefail` 下，函数最后一条语句若是 `[[ ]] && cmd`，判定失败会让函数返回非零，`set -e` 在调用处终止脚本。
+2. `grep` 无匹配返回 1，经 `pipefail` 会中止；所有“取值”函数必须显式兜底。
+3. `timeout` 只能包裹外部命令，**不能包裹 shell 函数**（`timeout 20 docker_compose …` 会直接找不到命令）。
+4. `docker compose exec` 默认是 root；配置写入必须以 `-u 10000:10000 -e HOME=/opt/data` 执行，否则 `/opt/data` 里出现 root 文件。
+5. 面板端口**不走** `dashboard.port` 配置，必须 `hermes dashboard --port <端口>`；Caddy 和状态面板都依赖这个端口。
+6. 首次启动前不要预创建空 `.env`：stage2 只在文件缺失时从 `.env.example` 种子，空文件会让默认项丢失。
+7. `docker compose up` 前先 `docker pull`；`up` 默认不会主动拉新镜像。
+8. Compose 的 `network_mode: host` 让 dashboard 的 `127.0.0.1:9119` 直接出现在宿主机上，Caddy 才能反代；不要改成端口映射后仍只监听回环。
+9. 容器日志与 Hermes 自己的 `logs/gateway.log` 是两套：平台连接结论只看后者，且只看本次启动片段。
+10. 备份/恢复要“就地合并 + 只挪走将被覆盖的文件”，整目录替换会把安装弄残。
+11. Caddy `validate/fmt` 必须带 `--adapter caddyfile`。
+12. 源码带 CRLF 时在 Linux 报 `$'\r': command not found` —— 提交前统一 LF。
+13. 需要 `qrcode` 才能渲染终端二维码；官方镜像已内置 messaging extra。
+14. 国内网络：Docker Hub 慢时用 GHCR；GitHub/PyPI 加速只影响原生模式与工具自身下载。
 
 ---
 

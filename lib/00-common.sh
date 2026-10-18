@@ -64,8 +64,13 @@ fi
 STATE_FILE="$ETC_DIR/state.env"
 MIRROR_FILE="$ETC_DIR/mirror.env"
 CRED_FILE="$ETC_DIR/credentials.txt"
+COMPOSE_FILE="$ETC_DIR/docker-compose.yml"
 UHOME="${HV_HERMES_HOME:-$HHOME/.hermes}"      # HERMES_HOME
 HBIN="${HV_HERMES_BIN:-$HHOME/.local/bin/hermes}"
+
+# 部署后端:docker(默认,root)或 native(原地安装,兼容旧实例 / 普通用户)
+DEPLOY_BACKEND="${HV_DEPLOY_BACKEND:-}"
+HV_IMAGE_REF="${HV_IMAGE_REF:-}"
 
 DASH_PORT="${DASH_PORT:-9119}"
 API_PORT="${API_PORT:-8642}"

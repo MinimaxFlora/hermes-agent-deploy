@@ -54,7 +54,15 @@ cred_set() { mkdir -p "$ETC_DIR"; kv_set "$CRED_FILE" "$1" "$2"; chmod 600 "$CRE
 cred_get() { kv_get "$CRED_FILE" "$1" "${2:-}"; }
 
 env_file() { printf '%s/.env' "$UHOME"; }
-env_set() { kv_set "$(env_file)" "$1" "$2"; chown "$HUSER:$HUSER" "$(env_file)" 2>/dev/null || true; chmod 600 "$(env_file)"; }
+env_set() {
+    kv_set "$(env_file)" "$1" "$2"
+    if [[ "${DEPLOY_BACKEND:-native}" == "docker" ]]; then
+        chown "${DOCKER_UID:-10000}:${DOCKER_GID:-10000}" "$(env_file)" 2>/dev/null || true
+    else
+        chown "$HUSER:$HUSER" "$(env_file)" 2>/dev/null || true
+    fi
+    chmod 600 "$(env_file)"
+}
 env_get() { kv_get "$(env_file)" "$1" "${2:-}"; }
 env_del() { kv_del "$(env_file)" "$1"; }
 
