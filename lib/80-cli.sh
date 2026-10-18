@@ -25,6 +25,7 @@ usage() {
     diagnose          自检与诊断
     backup            立即备份;restore 恢复
     update            更新 Hermes;auto-update on|off|status
+    engine <动作>      Docker Engine:version|update(按版本化 Release 升级)
     firewall          配置防火墙
     mirror [--force]  探测并应用国内加速通道
     uninstall         卸载(逐项确认)
@@ -138,6 +139,15 @@ main() {
             if [[ "${1:-}" == "auto-update" ]]; then
                 case "${2:-status}" in on) auto_update_install;; off) auto_update_remove;; *) auto_update_status; echo;; esac
             else hermes_update; fi ;;
+        engine|docker-engine)
+            case "${1:-version}" in
+                update) docker_engine_update ;;
+                version|status)
+                    docker --version 2>/dev/null || true
+                    docker compose version 2>/dev/null || true
+                    ;;
+                *) err "用法: engine [version|update]"; exit 1 ;;
+            esac ;;
         firewall) firewall_setup ;;
         mirror) mirror_probe "${1:+--force}"; mirror_apply_user; mirror_show ;;
         uninstall) uninstall_run ;;

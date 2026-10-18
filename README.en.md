@@ -117,6 +117,7 @@ hermes-vps service restart gateway
 hermes-vps diagnose
 hermes-vps backup / restore
 hermes-vps update
+hermes-vps engine update           # upgrade Docker Engine from versioned Releases
 hermes-vps uninstall
 ```
 

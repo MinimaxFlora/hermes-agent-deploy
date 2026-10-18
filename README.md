@@ -118,7 +118,7 @@ sudo hermes-vps
   ╭──────────────────────────────────────────────────────────────────────────╮
   │  Hermes Agent · VPS 一键部署与管理                                       │
   │  模型 / QQ / 微信 / 域名 HTTPS / 自检备份                                │
-  │  v1.2.0  ·  Debian GNU/Linux 13 (trixie) x86_64  ·  2C / 967MB           │
+  │  v1.2.1  ·  Debian GNU/Linux 13 (trixie) x86_64  ·  2C / 967MB           │
   ╰──────────────────────────────────────────────────────────────────────────╯
 
   运行状态 ──────────────────────────────────────────────────────────────
@@ -167,6 +167,7 @@ sudo hermes-vps
 | 7 自检与诊断 | `diagnose` | 服务、端口、认证门、API、证书、备份 |
 | 8 备份与恢复 | `backup` / `restore` | 含数据、Compose、状态与凭据 |
 | 9 更新 | `update` / `update auto-update on\|off` | 拉取新镜像并重建容器；可选同时更新 Docker Engine；更新前自动备份 |
+| — | `engine version\|update` | 查看 / 按 Docker_Private_Source 版本化 Release 升级 Docker Engine |
 | 10 防火墙 | `firewall` | 只**增加**放行，绝不动既有规则 |
 | 11 网络加速 | `mirror --force` | 重新测速并应用 |
 | 12 帮助 | `help` | 命令与路径速查 |
@@ -286,7 +287,7 @@ install.sh             从 Release 安装 / 升级（自动取最新版 + sha256
 tests/                 lint / smoke / strict / docker / 真实 caddy 校验 / 路由 / 真机验收
 ```
 
-**发布流程**：改 `VERSION` → 打 tag `v1.2.0` → Actions 跑全量测试、构建 `hermes-vps.sh`、生成 `.sha256` 并创建 Release。用户端只跑 `install.sh`，永远拿到同一份自包含脚本。
+**发布流程**：改 `VERSION` → 打 tag `v1.2.1` → Actions 跑全量测试、构建 `hermes-vps.sh`、生成 `.sha256` 并创建 Release。用户端只跑 `install.sh`，永远拿到同一份自包含脚本。
 
 | 路径 | 内容 |
 |---|---|
