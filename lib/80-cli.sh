@@ -36,6 +36,7 @@ usage() {
   通用参数:
     -y, --yes            全部确认自动回答“是”
     --non-interactive    非交互(不提问,用默认值/已有配置)
+    --detach             后台部署:立即返回,SSH 断开也不中断(推荐)
     --force              强制重装等
     --image <镜像>       指定 Hermes 镜像(例:ghcr.io/minimaxflora/hermes-agent:latest)
     --docker-release <tag>   固定 Docker Engine 的 Release(例:v29.7.2;默认最新)
@@ -45,6 +46,43 @@ usage() {
 EOF
 }
 
+# 后台部署:systemd-run 脱离当前 SSH 会话,断线不会杀掉部署;没有 systemd 时退回 setsid+nohup
+detach_install() {
+    local self unit log
+    local -a extra=()
+    self="$(readlink -f "$0" 2>/dev/null || printf '%s' "$0")"
+    mkdir -p "$TOOL_LOG_DIR" || die "无法创建日志目录:$TOOL_LOG_DIR"
+    log="$TOOL_LOG_DIR/deploy-$(date +%Y%m%d-%H%M%S).log"
+    [[ -n "${HV_IMAGE_REF:-}" ]] && extra+=(--image "$HV_IMAGE_REF")
+    [[ -n "${DOCKER_RELEASE:-}" ]] && extra+=(--docker-release "$DOCKER_RELEASE")
+    [[ -n "${DOCKER_VERSION:-}" ]] && extra+=(--docker-version "$DOCKER_VERSION")
+    [[ "${FORCE:-0}" == "1" ]] && extra+=(--force)
+    unit="hermes-vps-deploy-$(date +%s)"
+    local -a run_cmd=("$self" install --non-interactive --yes --no-color "${extra[@]}")
+
+    if have systemd-run && [[ -d /run/systemd/system ]]; then
+        if systemd-run --unit="$unit" \
+            --setenv="HOME=$HOME" --setenv="PATH=$PATH" \
+            --property=StandardOutput=append:"$log" \
+            --property=StandardError=append:"$log" \
+            --property=WorkingDirectory=/root \
+            "${run_cmd[@]}" >/dev/null 2>&1; then
+            ok "部署已转入后台,SSH 断开不会中断"
+            info "查看日志:tail -f $log"
+            info "查看状态:systemctl status $unit"
+            info "完成后运行 hermes-vps,用菜单 2/4 配置模型和域名"
+            return 0
+        fi
+        warn "systemd-run 启动失败,改用 nohup 后台运行"
+    fi
+
+    setsid env HOME="$HOME" PATH="$PATH" "${run_cmd[@]}" >>"$log" 2>&1 </dev/null &
+    ok "部署已在后台运行(PID $!),SSH 断开不会中断"
+    info "查看日志:tail -f $log"
+    info "完成后运行 hermes-vps,用菜单 2/4 配置模型和域名"
+    return 0
+}
+
 
 main() {
     local args=()
@@ -52,6 +90,7 @@ main() {
         case "$1" in
             -y|--yes) ASSUME_YES=1 ;;
             --non-interactive|--no-interactive) NONINTERACTIVE=1 ;;
+            --detach|--background) DETACH=1 ;;
             --force) FORCE=1 ;;
             --image) HV_IMAGE_REF="${2:-}"; shift ;;
             --image=*) HV_IMAGE_REF="${1#*=}" ;;
@@ -88,6 +127,12 @@ main() {
         help|-h|--help|version|-V|--version|mode|--mode|selftest) ;;
         *) is_root || require_root "Docker Compose 部署与管理" ;;
     esac
+    if [[ "${DETACH:-0}" == "1" ]]; then
+        case "$cmd" in
+            install|deploy) detach_install; return $? ;;
+            *) die "--detach 只能用于 install/deploy" ;;
+        esac
+    fi
     if [[ -z "$cmd" ]]; then
         if [[ -t 0 && -t 1 ]]; then main_menu
         else usage; fi

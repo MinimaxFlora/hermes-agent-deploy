@@ -75,6 +75,14 @@ sudo hermes-vps
 # choose 1 → domain → image registry (Docker Hub / GHCR) → model from the list
 ```
 
+SSH unstable, or pulling a 4.5 GB image on a 1-core box? Run detached so disconnects
+cannot kill the deployment:
+
+```bash
+sudo hermes-vps install --detach
+tail -f /var/log/hermes-vps/deploy-*.log
+```
+
 Takes roughly 3–10 minutes, mostly pulling the ~1 GB image.
 
 ### Requirements

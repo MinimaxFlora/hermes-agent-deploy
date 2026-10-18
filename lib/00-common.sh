@@ -10,6 +10,12 @@
 
 if [ -z "${BASH_VERSION:-}" ]; then exec bash "$0" "$@"; fi
 if [ "${BASH_VERSINFO[0]}" -lt 4 ]; then echo "需要 bash >= 4(当前 $BASH_VERSION)" >&2; exit 1; fi
+# systemd-run / cron / 无登录 shell 下 HOME 可能不存在,set -u 会直接炸
+if [[ -z "${HOME:-}" ]]; then
+    HOME="$(getent passwd "$(id -u)" 2>/dev/null | cut -d: -f6)"
+    HOME="${HOME:-/root}"
+    export HOME
+fi
 
 set -Eeuo pipefail
 
