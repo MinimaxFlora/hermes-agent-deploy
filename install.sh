@@ -13,10 +13,9 @@
 #     bash install.sh --system               装到 /usr/local/bin(root 用)
 #     bash install.sh --dry-run              只解析并下载,不安装
 #
-#  运行模式:工具本身两种身份都支持 —— root 跑 = 系统级(默认 Docker Compose
-#    拉取官方镜像 + /etc 配置 + Caddy 80/443);普通用户跑 = 用户态原生安装
-#    (全部落在 $HOME,服务用 systemd --user,不可用时退回后台进程)。
-#    root 也可以用 --native 切回原地安装。
+#  运行模式:只支持 Docker Compose。root 运行 = 官方镜像 + /etc 配置 + Caddy
+#    80/443;普通用户运行只允许只读命令,部署/管理会自动提示用 sudo 重跑。
+#    没有 Docker 时,用 Docker_Private_Source 的版本化 Release 安装。
 #
 #  说明:脚本本体由 GitHub Actions 在打 tag 时构建并上传到 Release,
 #        仓库里只有模块化源码(lib/ + bin/),发布产物是自包含单文件。
@@ -44,10 +43,10 @@ usage() {
     cat <<'EOF'
   install.sh —— 从 GitHub Release 安装 / 升级 hermes-vps
 
-  一条命令(root:装到 /usr/local/bin;之后 sudo hermes-vps 打开菜单,默认 Docker Compose):
+  一条命令(root:装到 /usr/local/bin;之后 sudo hermes-vps 打开菜单):
     curl -fsSL https://raw.githubusercontent.com/MinimaxFlora/hermes-agent-deploy/main/install.sh | sudo bash
 
-  普通用户(装到 ~/.local/bin,不需要 root;默认原生用户态安装):
+  普通用户(只装命令到 ~/.local/bin;部署/管理请用 sudo hermes-vps):
     curl -fsSL https://raw.githubusercontent.com/MinimaxFlora/hermes-agent-deploy/main/install.sh | bash
 
   其它参数(管道形式要用 bash -s -- 传参;已存到本地则直接 bash install.sh …):
@@ -233,8 +232,8 @@ main() {
     if [[ "$(id -u)" -eq 0 ]]; then
         printf '    %s当前是 root:默认 Docker Compose(官方镜像)+ Caddy 域名 HTTPS%s\n' "$C_DIM" "$C_N"
     else
-        printf '    %s当前是普通用户:直接用即可走用户态(全部落在 $HOME)%s\n' "$C_DIM" "$C_N"
-        printf '    %s需要域名/HTTPS(80/443)、防火墙等系统级能力时,再用 sudo hermes-vps%s\n' "$C_DIM" "$C_N"
+        printf '    %s当前是普通用户:命令已安装,部署/管理请用 sudo hermes-vps%s\n' "$C_DIM" "$C_N"
+        printf '    %s没有 Docker 时会自动用 Docker_Private_Source 安装%s\n' "$C_DIM" "$C_N"
     fi
     printf '\n'
 }

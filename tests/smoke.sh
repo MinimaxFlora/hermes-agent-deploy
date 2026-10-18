@@ -120,25 +120,15 @@ assert_eq "1" "$DR_API" "domain-root:--api 解析"
 domain_root_parse panel.example.com
 assert_eq "9119" "$DR_PORT" "domain-root:未给端口时用本实例默认端口"
 
-# 服务状态判定:用户态先看 pidfile(机器上有用户级 systemd 但没装我们的单元时,
-# 只问 systemctl 会误报 inactive,而服务其实活着)
-_dpf="$(pidfile_for hermes-dashboard)"
-mkdir -p "$(dirname "$_dpf")"
-printf '%s' "$$" >"$_dpf"
-assert_eq "active" "$(HV_MODE=user svc_state hermes-dashboard)" "pidfile 指向存活进程 → active"
-printf '%s' "999999" >"$_dpf"
-assert_eq "inactive" "$(HV_MODE=user svc_state hermes-dashboard)" "pidfile 指向死进程 → inactive"
-rm -f "$_dpf"
-
-# 官方网关 status 输出解析 + 用户态日志提示(真机:journalctl --user 回 No entries 把人带沟里)
+# 官方网关 status 输出解析
 assert_eq "41890" "$(printf '  ✓ Gateway is running (PID: 41890)
     (Running manually, not as a system service)
 ' | gw_pid_from_status)" "解析官方网关 PID"
 assert_eq "" "$(printf '  ✗ Gateway is not running
 ' | gw_pid_from_status)" "未运行时解析为空"
-_hint="$(HV_MODE=user svc_log_hint hermes-gateway)"
-assert_contains "$_hint" "logs/gateway.log" "用户态网关日志提示指向真实日志文件"
-assert_not_contains "$_hint" "journalctl" "用户态不再提示 journalctl(那里没有内容)"
+_hint="$(svc_log_hint hermes-gateway)"
+assert_contains "$_hint" "docker compose" "Docker 模式日志提示走 compose"
+assert_contains "$_hint" "logs --tail 60 gateway" "Docker 模式日志提示指向 gateway"
 
 # 官方网关 PID 解析(全机单例,权威来源是官方 status 输出)
 _stub="$(mktemp)"
@@ -162,9 +152,5 @@ assert_eq "1" "$(HV_HOME_ROOT="$_tu" other_user_instances | wc -l | tr -d ' ')" 
 _tu2="$(mktemp -d)"; mkdir -p "$_tu2/carol"
 assert_eq "" "$(HV_HOME_ROOT="$_tu2" other_user_instances_users)" "无实例时输出为空"
 rm -rf "$_tu" "$_tu2"
-
-# root 侧助手:非 root 调用只提示、不崩(它本来就是给 sudo 用的)
-dr_out="$(bash "$DIST" domain-root panel.example.com 2>&1)" || true
-assert_contains "$dr_out" "root 侧助手" "domain-root 子命令存在,非 root 时给出提示而非报错崩掉"
 
 summary

@@ -6,10 +6,9 @@ usage() {
 
   Hermes Agent · VPS 一键部署与管理  v$V
 
-  运行模式(自动识别,无需参数):
-    root        Docker Compose(默认):官方镜像 + 主机 Caddy;数据在 /opt/hermes/.hermes
-                也可用 --native 改为原地安装(兼容旧实例)
-    普通用户    用户态原生安装:全部落在 $HOME;需要特权的功能会提示用 sudo 重新执行
+  运行模式(仅 Docker Compose):
+    root       官方镜像 + 主机 Caddy;没有 Docker 时用 Docker_Private_Source 安装
+    普通用户    只能执行只读命令;部署/管理请用 sudo hermes-vps(命令会自动提权)
 
   用法:
     bash ${SELF##*/}                 打开交互菜单(推荐)
@@ -38,10 +37,9 @@ usage() {
     -y, --yes            全部确认自动回答“是”
     --non-interactive    非交互(不提问,用默认值/已有配置)
     --force              强制重装等
-    --docker             使用 Docker Compose 部署(默认)
-    --native             使用原地安装(旧模式,兼容已有实例)
-    --image <镜像>       指定镜像(例:ghcr.io/minimaxflora/hermes-agent:latest)
-    --skip-browser       安装时跳过浏览器组件(省内存/时间,仅 --native 有效)
+    --image <镜像>       指定 Hermes 镜像(例:ghcr.io/minimaxflora/hermes-agent:latest)
+    --docker-release <tag>   固定 Docker Engine 的 Release(例:v29.7.2;默认最新)
+    --docker-version <ver>   固定 docker-ce 包版本(例:29.7.2)
     --no-color           关闭颜色
     --debug              打开 bash -x
 EOF
@@ -55,10 +53,10 @@ main() {
             -y|--yes) ASSUME_YES=1 ;;
             --non-interactive|--no-interactive) NONINTERACTIVE=1 ;;
             --force) FORCE=1 ;;
-            --docker) HV_DEPLOY_BACKEND="docker" ;;
-            --native) HV_DEPLOY_BACKEND="native" ;;
             --image) HV_IMAGE_REF="${2:-}"; shift ;;
             --image=*) HV_IMAGE_REF="${1#*=}" ;;
+            --docker-release) DOCKER_RELEASE="${2:-}"; shift ;;
+            --docker-version) DOCKER_VERSION="${2:-}"; shift ;;
             --skip-browser) SKIP_BROWSER=1 ;;
             --no-color) NO_COLOR=1; R=""; G=""; Y=""; B=""; C=""; M=""; W=""; BD=""; DM=""; N="" ;;
             --debug) DEBUG_ON=1 ;;
@@ -76,12 +74,21 @@ main() {
         *) state_init ;;
     esac
     load_mirror_env
-    backend_init "$(st_get DEPLOY_BACKEND "")"
+    backend_init
     # 生效端口:用户态撞端口时 ensure_free_ports 会把新端口记进 state,这里读回来
     DASH_PORT="$(st_get DASH_PORT "$DASH_PORT")"
     API_PORT="$(st_get API_PORT "$API_PORT")"
 
     local cmd="${args[0]:-}"
+    # 只保留一种部署方式:Docker Compose。除只读命令外一律要求 root(自动 sudo 重跑)。
+    case "$cmd" in
+        "" )
+            # 交互菜单需要 root;无 TTY 时只打印用法(测试/管道场景)
+            if [[ -t 0 && -t 1 ]]; then is_root || require_root "Docker Compose 管理"; fi
+            ;;
+        help|-h|--help|version|-V|--version|mode|--mode|selftest) ;;
+        *) is_root || require_root "Docker Compose 部署与管理" ;;
+    esac
     if [[ -z "$cmd" ]]; then
         if [[ -t 0 && -t 1 ]]; then main_menu
         else usage; fi

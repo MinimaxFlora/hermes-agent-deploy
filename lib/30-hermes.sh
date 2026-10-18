@@ -156,6 +156,9 @@ hermes_update() {
         docker_wait_ready || warn "容器未在预期时间内就绪,请查看日志"
         st_set HERMES_VERSION "$(hermes_version 2>/dev/null || echo unknown)"
         ok "更新完成:$before → $(hermes_version 2>/dev/null || echo unknown)"
+        if confirm "同时更新 Docker Engine?(会短暂重启容器)" no; then
+            docker_engine_update || warn "Docker Engine 更新失败,现有版本继续运行"
+        fi
         return 0
     fi
     step "更新 Hermes"

@@ -54,13 +54,9 @@ MODEL_PICKED=""
 model_pick stepfun "" "step-3"
 assert_eq "step-3" "$MODEL_PICKED" "非交互返回默认模型"
 
-section "后端选择"
-HV_DEPLOY_BACKEND="native"
-backend_init ""
-assert_eq "native" "$DEPLOY_BACKEND" "显式 native"
-HV_DEPLOY_BACKEND="docker"
-backend_init ""
-assert_eq "docker" "$DEPLOY_BACKEND" "显式 docker"
-unset HV_DEPLOY_BACKEND || true
+section "后端固定为 Docker"
+backend_init
+assert_eq "docker" "$DEPLOY_BACKEND" "部署后端固定为 docker"
+assert_true "docker_backend" "docker_backend 恒为真"
 
 summary

@@ -42,31 +42,29 @@ install Docker → pull the official image → render Compose → pick a model f
 | 🩺 **Diagnostics and rollback** | Services, ports, auth gate, API auth, certificate, permissions, platform connections, backups. |
 | 🌏 **Five languages** | 简体中文 / English / 繁體中文 / 日本語 / 한국어 |
 
-## Run modes
+## Deployment: Docker Compose only
 
-| | **root (recommended)** | **regular user** |
-|---|---|---|
-| Deployment | **Docker Compose + official image (default)** | Native install under `$HOME` |
-| Override | `--native` for a native root install | `--docker` prompts for sudo |
-| Data | `/opt/hermes/.hermes` | `~/.hermes` |
-| Services | `hermes-gateway`, `hermes-dashboard` containers | `systemd --user` or background process |
-| Config/state | `/etc/hermes-vps` | `~/.config/hermes-vps` |
-| Domain + HTTPS | ✅ built-in Caddy | ⚠️ needs root (`sudo` re-exec) |
-| Model / platform / panel / backup / doctor | ✅ (official CLI inside the container) | ✅ |
+Native installation is no longer supported. Everything — deployment, models,
+messengers, domain, backups, diagnostics — runs against the official image.
 
-Existing native installations are detected automatically and keep their systemd management.
+| Item | Detail |
+|---|---|
+| Deployment | **Docker Compose + official image** (Docker Hub or GHCR) |
+| Docker Engine | Used if present; otherwise installed from [Docker_Private_Source](https://github.com/MinimaxFlora/Docker_Private_Source) versioned Releases (China mirror + GPG) |
+| Privileges | root required; a regular user is prompted to re-run with `sudo` |
+| Data | `/opt/hermes/.hermes` → `/opt/data` |
+| Services | `hermes-gateway`, `hermes-dashboard` containers |
+| Domain + HTTPS | built-in Caddy |
+| Model / platform / panel / backup / doctor | official CLI inside the container |
 
 ```bash
-# root, Docker Compose
 curl -fsSL https://raw.githubusercontent.com/MinimaxFlora/hermes-agent-deploy/main/install.sh | sudo bash
 sudo hermes-vps
-
-# regular user, native mode
-curl -fsSL https://raw.githubusercontent.com/MinimaxFlora/hermes-agent-deploy/main/install.sh | bash
-hermes-vps
-
-hermes-vps mode      # e.g. 系统级(root) · 后端:docker
+hermes-vps mode      # 系统级(root) · 后端:docker
 ```
+
+Existing native instances are not adopted. Stop their services first, then
+deploy the Docker version; `/opt/hermes/.hermes` is reused.
 
 ## Quick start
 
@@ -84,7 +82,7 @@ Takes roughly 3–10 minutes, mostly pulling the ~1 GB image.
 | Item | Requirement |
 |---|---|
 | OS | Debian 10+ / Ubuntu 20.04+ (amd64 / arm64) |
-| Privileges | root for Docker deployment; native mode works as a regular user |
+| Privileges | root (use `sudo`; deployment is Docker-only) |
 | RAM | ≥ 1 GB |
 | Disk | ≥ 5 GB free (image ≈ 3 GB unpacked, plus data and backups) |
 | Domain | A record pointing at the VPS, ports 80/443 reachable |
@@ -122,7 +120,7 @@ hermes-vps update
 hermes-vps uninstall
 ```
 
-Flags: `--yes`, `--non-interactive`, `--force`, `--docker`, `--native`, `--image <ref>`, `--no-color`, `--debug`.
+Flags: `--yes`, `--non-interactive`, `--force`, `--image <ref>`, `--docker-release <tag>`, `--docker-version <version>`, `--no-color`, `--debug`.
 
 ## Security
 
@@ -158,7 +156,7 @@ Source modules: `lib/13-docker.sh` (engine/Compose/image/service control), `lib/
 ## Testing
 
 - `tests/lint.sh` — syntax, data tables, reproducible build (52 checks)
-- `tests/smoke.sh` — 67 checks
+- `tests/smoke.sh` — 64 checks
 - `tests/strict.sh` — 15 checks under `set -Eeuo pipefail`
 - `tests/docker.sh` — 20 offline checks for image refs, Compose rendering, model catalog and backend selection
 - Real deployment on Debian 13 + Docker 26 with `dockorae/hermes-agent:0.22.2`, including dashboard HTTP 200 and `config set/get` inside the container.
@@ -169,7 +167,8 @@ Source modules: `lib/13-docker.sh` (engine/Compose/image/service control), `lib/
 
 **Pin a version.** Set the image tag during deployment, or `hermes-vps install --image dockorae/hermes-agent:0.22.2`.
 
-**Existing native install.** Detected automatically. To migrate: stop native services, then `sudo hermes-vps install --docker`; the data directory is reused.
+**Existing native install.** Not adopted. Stop the native services, then
+`sudo hermes-vps install`; `/opt/hermes/.hermes` is reused.
 
 **Dashboard 400 `Invalid Host header`.** The dashboard reads `dashboard.public_url` at startup. Run `hermes-vps domain <domain>` (it restarts the dashboard) or `hermes-vps service restart dashboard`.
 

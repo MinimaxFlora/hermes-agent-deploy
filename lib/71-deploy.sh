@@ -2,11 +2,7 @@
 # 一键部署
 # ---------------------------------------------------------------------------
 deploy_all() {
-    if [[ "$HV_MODE" == "system" ]]; then
-        require_root "一键部署(系统级)"
-    elif docker_backend; then
-        require_root "Docker Compose 部署(需要 root 安装 Docker 与 80/443)"
-    fi
+    require_root "一键部署(Docker Compose)"
     clear_screen
     header "一键部署"
     detect_os
@@ -57,7 +53,11 @@ deploy_all() {
         fi
     fi
     if [[ -n "$domain" ]]; then ask email "证书通知邮箱(可留空)" "$(st_get ACME_EMAIL)"; fi
-    if docker_backend; then docker_choose_image; fi
+    if docker_backend; then
+        [[ -n "${DOCKER_RELEASE:-}" ]] && st_set DOCKER_RELEASE "$DOCKER_RELEASE"
+        [[ -n "${DOCKER_VERSION:-}" ]] && st_set DOCKER_VERSION "$DOCKER_VERSION"
+        docker_choose_image
+    fi
     if [[ "$(st_get MODEL_PROVIDER)" == "" ]]; then
         confirm "现在配置模型提供商(填 API Key,自动验证)?" yes && want_model=1 || want_model=0
     fi

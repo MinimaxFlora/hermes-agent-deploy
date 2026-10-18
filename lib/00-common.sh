@@ -68,9 +68,13 @@ COMPOSE_FILE="$ETC_DIR/docker-compose.yml"
 UHOME="${HV_HERMES_HOME:-$HHOME/.hermes}"      # HERMES_HOME
 HBIN="${HV_HERMES_BIN:-$HHOME/.local/bin/hermes}"
 
-# 部署后端:docker(默认,root)或 native(原地安装,兼容旧实例 / 普通用户)
-DEPLOY_BACKEND="${HV_DEPLOY_BACKEND:-}"
+# 部署后端:只支持 Docker Compose(官方镜像)
+DEPLOY_BACKEND="docker"
 HV_IMAGE_REF="${HV_IMAGE_REF:-}"
+# Docker Engine 安装来源与可选版本(留空 = 最新版本化 Release)
+DOCKER_INSTALL_URL="${HV_DOCKER_INSTALL_URL:-https://github.com/MinimaxFlora/Docker_Private_Source/raw/refs/heads/master/install.sh}"
+DOCKER_RELEASE="${HV_DOCKER_RELEASE:-}"
+DOCKER_VERSION="${HV_DOCKER_VERSION:-}"
 
 DASH_PORT="${DASH_PORT:-9119}"
 API_PORT="${API_PORT:-8642}"

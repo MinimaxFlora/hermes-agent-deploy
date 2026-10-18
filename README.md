@@ -52,38 +52,35 @@
 
 ---
 
-## 🧩 运行模式
+## 🧩 运行方式:只有 Docker Compose
 
-脚本启动时**自动判断身份**，新机器 root 默认走 Docker Compose：
+脚本不再提供原生安装模式。部署、模型、平台、域名、备份、自检全部围绕
+**官方镜像 + Docker Compose** 进行：
 
-| | **系统级(root)** | **用户态(普通用户)** |
-|---|---|---|
-| 部署方式 | **Docker Compose + 官方镜像(默认)** | 原生安装到 `$HOME`（不需要 Docker） |
-| 切换方式 | `--native` 可改回原地安装 | `--docker` 会提示用 sudo |
-| 数据 | `/opt/hermes/.hermes` | `~/.hermes` |
-| 服务 | 容器 `hermes-gateway` / `hermes-dashboard` | `systemd --user` 或后台进程 |
-| 配置/状态 | `/etc/hermes-vps` | `~/.config/hermes-vps` |
-| 域名 + HTTPS | ✅ 内置 Caddy | ⚠️ 需 root：会提示 `sudo` 重跑 |
-| 模型 / 平台 / 面板 / 备份 / 自检 | ✅ 容器内执行官方 CLI | ✅ |
-| 防火墙 / swap / 系统依赖 | ✅ 自动 | ⚠️ 需要特权 |
-
-已有原生安装的机器会**自动识别为 native 模式**，继续用原来的 systemd 管理，不会被强行切到 Docker。
+| 项目 | 说明 |
+|---|---|
+| 部署方式 | **Docker Compose + 官方镜像**（Docker Hub / GHCR 二选一） |
+| Docker 来源 | 已安装则直接使用；没有 Docker 时调用 [Docker_Private_Source](https://github.com/MinimaxFlora/Docker_Private_Source) 的版本化 Release 安装（国内镜像源 + GPG 校验） |
+| 权限 | 需要 root；普通用户执行部署/管理命令时会提示 `sudo` 重跑 |
+| 数据 | `/opt/hermes/.hermes`（挂载到容器 `/opt/data`） |
+| 服务 | 容器 `hermes-gateway` / `hermes-dashboard`，`restart: unless-stopped` |
+| 域名 + HTTPS | 内置 Caddy，自动申请证书 |
+| 模型 / 平台 / 面板 / 备份 / 自检 | 全部在容器内执行官方 CLI |
 
 ```bash
-# root：默认 Docker Compose（推荐，一台机器一个实例）
+# root 安装工具(装到 /usr/local/bin)
 curl -fsSL https://raw.githubusercontent.com/MinimaxFlora/hermes-agent-deploy/main/install.sh | sudo bash
 sudo hermes-vps
-
-# 普通用户：原生用户态（不碰系统目录，不需要 Docker）
-curl -fsSL https://raw.githubusercontent.com/MinimaxFlora/hermes-agent-deploy/main/install.sh | bash
-hermes-vps
 ```
 
-查看当前模式与后端：
+查看当前状态：
 
 ```bash
-hermes-vps mode      # 例：运行模式:系统级(root) · 后端:docker
+hermes-vps mode      # 系统级(root) · 后端:docker
 ```
+
+> 普通用户可以安装命令到 `~/.local/bin`，但部署/管理需要 root；
+> 直接 `sudo hermes-vps` 即可。原生的旧实例不会被接管，请先停止旧服务再部署 Docker 版本。
 
 ## 🚀 开始使用
 
@@ -107,7 +104,7 @@ sudo hermes-vps
 | 项目 | 要求 |
 |---|---|
 | 系统 | Debian 10+ / Ubuntu 20.04+（amd64 / arm64） |
-| 权限 | root（Docker 部署）；普通用户可用原生模式 |
+| 权限 | root（Docker 部署；普通用户请用 `sudo`） |
 | 内存 | ≥ 1GB；镜像运行本身比本地编译省内存 |
 | 磁盘 | ≥ 5GB 可用（镜像解压后约 3GB，另留数据与备份） |
 | 域名 | 要 `https://域名` 访问需 A 记录指向本机公网 IP，并放通 80/443 |
@@ -121,7 +118,7 @@ sudo hermes-vps
   ╭──────────────────────────────────────────────────────────────────────────╮
   │  Hermes Agent · VPS 一键部署与管理                                       │
   │  模型 / QQ / 微信 / 域名 HTTPS / 自检备份                                │
-  │  v1.1.1  ·  Debian GNU/Linux 13 (trixie) x86_64  ·  2C / 967MB           │
+  │  v1.2.0  ·  Debian GNU/Linux 13 (trixie) x86_64  ·  2C / 967MB           │
   ╰──────────────────────────────────────────────────────────────────────────╯
 
   运行状态 ──────────────────────────────────────────────────────────────
@@ -144,7 +141,7 @@ sudo hermes-vps
      6) 服务管理                  启动 / 停止 / 重启 / 看日志
      7) 自检与诊断                服务、端口、认证门、API、证书、备份
      8) 备份与恢复                打包配置与密钥,可一键回滚
-     9) 更新                      拉取新镜像 / 每日自动检查
+     9) 更新                      拉新镜像(可选更新 Docker Engine)/ 自动检查
     10) 防火墙与安全              只放行 SSH / 80 / 443
     11) 网络加速探测              GitHub / PyPI 国内镜像自动选优
     12) 使用说明 / 帮助           常用命令与路径
@@ -169,7 +166,7 @@ sudo hermes-vps
 | 6 服务管理 | `service start\|stop\|restart\|status\|logs` | 容器 / Caddy |
 | 7 自检与诊断 | `diagnose` | 服务、端口、认证门、API、证书、备份 |
 | 8 备份与恢复 | `backup` / `restore` | 含数据、Compose、状态与凭据 |
-| 9 更新 | `update` / `update auto-update on\|off` | 拉取新镜像并重建容器；更新前自动备份 |
+| 9 更新 | `update` / `update auto-update on\|off` | 拉取新镜像并重建容器；可选同时更新 Docker Engine；更新前自动备份 |
 | 10 防火墙 | `firewall` | 只**增加**放行，绝不动既有规则 |
 | 11 网络加速 | `mirror --force` | 重新测速并应用 |
 | 12 帮助 | `help` | 命令与路径速查 |
@@ -177,7 +174,7 @@ sudo hermes-vps
 | — | `selftest` | 检查脚本自身（语法/数据表/Compose 渲染/Caddyfile） |
 | — | `self-install` | 把自己装到 `/usr/local/bin/hermes-vps` |
 
-通用参数：`--yes`、`--non-interactive`、`--force`、`--docker`、`--native`、`--image <镜像>`、`--no-color`、`--debug`。
+通用参数：`--yes`、`--non-interactive`、`--force`、`--image <镜像>`、`--docker-release <tag>`、`--docker-version <版本>`、`--no-color`、`--debug`。
 
 ---
 
@@ -269,7 +266,7 @@ lib/20-system.sh       发行版探测 / 依赖 / swap 保护
 lib/21-mirror.sh       网络加速（GitHub / PyPI 测速选优）
 lib/22-firewall.sh     防火墙（只增不减）
 lib/23-probe.sh        通用探测（端口 / 服务 / 公网 IP / 域名解析）
-lib/30-hermes.sh       Docker 部署 / 原生安装与更新
+lib/30-hermes.sh       Docker 部署 / 镜像与 Docker Engine 更新
 lib/31-model.sh        模型提供商表 + 模型目录 + 两级连通验证
 lib/40-platform.sh     消息平台表 + 厂商 API 验票 + 脚本内扫码
 lib/50-webui.sh        面板认证门 / 凭据 / 公网地址
@@ -289,7 +286,7 @@ install.sh             从 Release 安装 / 升级（自动取最新版 + sha256
 tests/                 lint / smoke / strict / docker / 真实 caddy 校验 / 路由 / 真机验收
 ```
 
-**发布流程**：改 `VERSION` → 打 tag `v1.1.1` → Actions 跑全量测试、构建 `hermes-vps.sh`、生成 `.sha256` 并创建 Release。用户端只跑 `install.sh`，永远拿到同一份自包含脚本。
+**发布流程**：改 `VERSION` → 打 tag `v1.2.0` → Actions 跑全量测试、构建 `hermes-vps.sh`、生成 `.sha256` 并创建 Release。用户端只跑 `install.sh`，永远拿到同一份自包含脚本。
 
 | 路径 | 内容 |
 |---|---|
@@ -310,9 +307,9 @@ tests/                 lint / smoke / strict / docker / 真实 caddy 校验 / �
 | 验收项 | 结果 |
 |---|---|
 | 静态检查 `tests/lint.sh` | 52 项全通过（语法 / 数据表 / 构建可复现） |
-| 冒烟 `tests/smoke.sh` | 67 项全通过 |
+| 冒烟 `tests/smoke.sh` | 64 项全通过 |
 | 严格模式 `tests/strict.sh` | 15 项全通过（`set -Eeuo pipefail` 下原语不中止） |
-| Docker 后端 `tests/docker.sh` | 20 项全通过（镜像地址 / Compose 渲染 / 模型目录 / 后端选择） |
+| Docker 后端 `tests/docker.sh` | 20 项全通过（镜像地址 / Compose 渲染 / 模型目录 / 后端固定 Docker） |
 | 真实镜像部署 | 在 Debian 13 + Docker 26 上以 `dockorae/hermes-agent:0.22.2` 完成部署：容器启动、面板 200、`hermes --version` 正常、`config set/get` 写入 `/opt/data` |
 | 模型选择 | 内置目录 + 非交互默认值；交互式选择（编号 / 手动 / 默认）实测通过 |
 | 掩码输入 | pty 实测：输入 10 位显示 `**********`，变量值完整 |
@@ -327,10 +324,17 @@ tests/                 lint / smoke / strict / docker / 真实 caddy 校验 / �
 部署时可选择 GHCR（`ghcr.io/minimaxflora/hermes-agent`）；国内机器也可先给 Docker 配置 registry mirror。Docker Hub 与 GHCR 的内容和 digest 一致。
 
 **怎么固定版本？**
-部署时镜像标签填版本号（如 `0.22.2`），或 `hermes-vps install --image dockorae/hermes-agent:0.22.2`。`latest` 会随新版本移动。
+部署时镜像标签填版本号（如 `v0.22.2`），或 `hermes-vps install --image dockorae/hermes-agent:v0.22.2`。`latest` 会随新版本移动。
 
 **机器上已经有原生安装的 Hermes？**
-脚本检测到原生 launcher 会自动使用 native 模式，继续用 systemd 管理。想改为 Docker：先停掉原生服务（`systemctl disable --now hermes-gateway hermes-dashboard`），再 `sudo hermes-vps install --docker`；数据目录相同，不会丢配置。
+本工具现在只管理 Docker Compose 实例，不会再接管原生安装。迁移步骤：
+
+```bash
+sudo systemctl disable --now hermes-gateway hermes-dashboard   # 停止旧服务
+sudo hermes-vps install                                        # 用同一数据目录部署 Docker 版本
+```
+
+数据目录 `/opt/hermes/.hermes` 相同，配置和会话会直接复用。确认 Docker 版本运行正常后，再按需清理原生代码与 systemd 单元。
 
 **面板 9119 端口被占用？**
 Docker 模式默认用 `DASH_PORT=9119`；可在部署前 `export DASH_PORT=19119`，Compose 的 `dashboard --port`、Caddyfile 和状态面板都会跟随。
@@ -367,7 +371,7 @@ Docker 模式默认用 `DASH_PORT=9119`；可在部署前 `export DASH_PORT=1911
 11. Caddy `validate/fmt` 必须带 `--adapter caddyfile`。
 12. 源码带 CRLF 时在 Linux 报 `$'\r': command not found` —— 提交前统一 LF。
 13. 需要 `qrcode` 才能渲染终端二维码；官方镜像已内置 messaging extra。
-14. 国内网络：Docker Hub 慢时用 GHCR；GitHub/PyPI 加速只影响原生模式与工具自身下载。
+14. 国内网络：Docker Hub 慢时用 GHCR；Docker Engine 本身由 Docker_Private_Source 的国内源安装。
 
 ---
 

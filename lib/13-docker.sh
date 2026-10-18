@@ -15,7 +15,7 @@ DOCKER_IMAGE_GHCR="${HV_IMAGE_GHCR:-ghcr.io/minimaxflora/hermes-agent}"
 DOCKER_UID="${HV_DOCKER_UID:-10000}"
 DOCKER_GID="${HV_DOCKER_GID:-10000}"
 
-docker_backend() { [[ "${DEPLOY_BACKEND:-native}" == "docker" ]]; }
+docker_backend() { return 0; }
 
 docker_compose() {
     docker compose -f "$COMPOSE_FILE" --project-directory "$ETC_DIR" "$@"
@@ -35,30 +35,9 @@ docker_daemon_ok() {
     docker_available && docker info >/dev/null 2>&1
 }
 
-# 决定本次运行使用哪种后端:
-#   1) 显式 HV_DEPLOY_BACKEND
-#   2) 状态文件里记录的后端
-#   3) 已有 compose 文件 → docker;已有原生 launcher → native
-#   4) 全新机器:root 默认 Docker;普通用户仍可走原生用户态
+# 只支持 Docker Compose:保留函数供调用方使用,不再切换后端
 backend_init() {
-    local recorded="${1:-}"
-    if [[ -n "${HV_DEPLOY_BACKEND:-}" ]]; then
-        DEPLOY_BACKEND="$HV_DEPLOY_BACKEND"
-    elif [[ -n "$recorded" ]]; then
-        DEPLOY_BACKEND="$recorded"
-    elif [[ -f "$COMPOSE_FILE" ]]; then
-        DEPLOY_BACKEND="docker"
-    elif [[ -x "$HBIN" ]]; then
-        DEPLOY_BACKEND="native"
-    elif is_root; then
-        DEPLOY_BACKEND="docker"
-    else
-        DEPLOY_BACKEND="native"
-    fi
-    case "$DEPLOY_BACKEND" in
-        docker|native) ;;
-        *) DEPLOY_BACKEND="native" ;;
-    esac
+    DEPLOY_BACKEND="docker"
     return 0
 }
 
@@ -94,37 +73,50 @@ docker_compose_plugin_ensure() {
     return 1
 }
 
-docker_install() {
+docker_install() { # [force]  force=1 时走 --force 升级已安装的 Docker
+    local force="${1:-0}"
     require_root "安装 Docker Engine"
-    if docker_daemon_ok; then
+    if [[ "$force" != "1" ]] && docker_daemon_ok; then
         ok "Docker 已就绪:$(docker --version 2>/dev/null || echo docker)"
         docker_service_enable
         return 0
     fi
-    step "安装 Docker Engine 与 Compose 插件"
-    local script rc=0
-    script="$(mktemp /tmp/get-docker-XXXXXX.sh)"
-    if curl -fsSL --max-time 120 https://get.docker.com -o "$script" 2>/dev/null; then
-        set +e
-        sh "$script" </dev/null >/dev/null 2>&1
-        rc=$?
-        set -e
-        [[ $rc -ne 0 ]] && warn "get.docker.com 安装脚本退出码 $rc,尝试发行版软件包"
-    else
-        warn "无法下载 get.docker.com 安装脚本,尝试发行版软件包"
-    fi
-    rm -f "$script"
 
-    if ! have docker; then
-        case "$PKG" in
-            apt)
-                pkg_install docker.io docker-compose >/dev/null 2>&1 || pkg_install docker.io docker-compose-v2 >/dev/null 2>&1 || true
-                have docker || pkg_install docker.io >/dev/null 2>&1 || true
-                ;;
-            dnf|yum) pkg_install docker docker-compose-plugin >/dev/null 2>&1 || pkg_install docker docker-compose >/dev/null 2>&1 || true ;;
-            apk)     pkg_install docker docker-cli-compose >/dev/null 2>&1 || true ;;
-            pacman)  pkg_install docker docker-compose >/dev/null 2>&1 || true ;;
-        esac
+    local release version
+    release="$(st_get DOCKER_RELEASE "${DOCKER_RELEASE:-}")"
+    version="$(st_get DOCKER_VERSION "${DOCKER_VERSION:-}")"
+
+    step "安装 Docker Engine(国内镜像源:Docker_Private_Source)"
+    local script url ok=0 rc=0
+    script="$(mktemp /tmp/docker-cn-install-XXXXXX.sh)"
+    for url in \
+        "$DOCKER_INSTALL_URL" \
+        "https://testingcf.jsdelivr.net/gh/MinimaxFlora/Docker_Private_Source@master/install.sh" \
+        "https://ghfast.top/${DOCKER_INSTALL_URL}"; do
+        if curl -fsSL --max-time 90 "$url" -o "$script" 2>/dev/null; then ok=1; break; fi
+    done
+    if [[ $ok -ne 1 ]]; then
+        rm -f "$script"
+        err "下载 Docker 安装脚本失败"
+        dim "可手动执行:curl -fsSL https://github.com/MinimaxFlora/Docker_Private_Source/raw/refs/heads/master/install.sh | sudo bash"
+        return 1
+    fi
+
+    local -a args=()
+    [[ -n "$release" ]] && args+=(--tag "$release")
+    [[ -n "$version" ]] && args+=(--version "$version")
+    [[ "$force" == "1" ]] && args+=(--force)
+
+    info "运行 Docker_Private_Source 安装器 ${args[*]:-}(最新版本化 Release)"
+    set +e
+    bash "$script" "${args[@]}" </dev/null
+    rc=$?
+    set -e
+    rm -f "$script"
+    if [[ $rc -ne 0 ]]; then
+        err "Docker 安装器退出码 $rc"
+        dim "排查:journalctl -u docker -n 50 / apt-get -f install"
+        return $rc
     fi
 
     docker_service_enable
@@ -136,6 +128,15 @@ docker_install() {
     fi
     ok "Docker 安装完成:$(docker --version 2>/dev/null || echo docker)"
     docker compose version >/dev/null 2>&1 && ok "Docker Compose:$(docker compose version --short 2>/dev/null || echo 可用)"
+    return 0
+}
+
+# 更新 Docker Engine(重跑安装器,--force 升级到最新/指定版本)
+docker_engine_update() {
+    step "更新 Docker Engine"
+    docker_install 1 || return 1
+    docker_compose_up >/dev/null 2>&1 || true
+    ok "Docker Engine 已更新"
     return 0
 }
 
