@@ -266,7 +266,7 @@ docker_compose_up() {
 docker_wait_ready() {
     local i=0
     while [[ $i -lt 60 ]]; do
-        if docker_compose exec -T -u "${DOCKER_UID}:${DOCKER_GID}" gateway hermes --version >/dev/null 2>&1; then
+        if docker_compose_timeout 10 exec -T -u "${DOCKER_UID}:${DOCKER_GID}" gateway hermes --version >/dev/null 2>&1; then
             return 0
         fi
         sleep 2
