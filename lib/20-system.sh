@@ -69,10 +69,10 @@ deps_install() {
         # libatomic1/libstdc++6:官方工具自带的 node 运行时依赖 libatomic.so.1,
         # Debian 12 最小安装默认没有 —— 缺了会在官方脚本的 "pm install" 阶段才炸
         # (node 校验失败 → pm install failed → 退出 1),白等十几分钟。真机踩过。
-        apt)    pkgs=(curl git tar xz-utils openssl ca-certificates jq unzip libatomic1 libstdc++6) ;;
-        dnf|yum) pkgs=(curl git tar xz openssl ca-certificates jq unzip libatomic) ;;
-        apk)    pkgs=(curl git tar xz openssl ca-certificates jq unzip) ;;
-        pacman) pkgs=(curl git tar xz openssl ca-certificates jq unzip) ;;
+        apt)    pkgs=(curl git tar xz-utils openssl ca-certificates jq unzip gnupg libatomic1 libstdc++6) ;;
+        dnf|yum) pkgs=(curl git tar xz openssl ca-certificates jq unzip gnupg2 libatomic) ;;
+        apk)    pkgs=(curl git tar xz openssl ca-certificates jq unzip gnupg) ;;
+        pacman) pkgs=(curl git tar xz openssl ca-certificates jq unzip gnupg) ;;
     esac
     step "安装基础依赖"
     [[ ${#pkgs[@]} -gt 0 ]] && pkg_install "${pkgs[@]}" || true

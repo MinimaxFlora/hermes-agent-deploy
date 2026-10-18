@@ -118,7 +118,7 @@ sudo hermes-vps
   ╭──────────────────────────────────────────────────────────────────────────╮
   │  Hermes Agent · VPS 一键部署与管理                                       │
   │  模型 / QQ / 微信 / 域名 HTTPS / 自检备份                                │
-  │  v1.2.1  ·  Debian GNU/Linux 13 (trixie) x86_64  ·  2C / 967MB           │
+  │  v1.2.2  ·  Debian GNU/Linux 13 (trixie) x86_64  ·  2C / 967MB           │
   ╰──────────────────────────────────────────────────────────────────────────╯
 
   运行状态 ──────────────────────────────────────────────────────────────
@@ -287,7 +287,7 @@ install.sh             从 Release 安装 / 升级（自动取最新版 + sha256
 tests/                 lint / smoke / strict / docker / 真实 caddy 校验 / 路由 / 真机验收
 ```
 
-**发布流程**：改 `VERSION` → 打 tag `v1.2.1` → Actions 跑全量测试、构建 `hermes-vps.sh`、生成 `.sha256` 并创建 Release。用户端只跑 `install.sh`，永远拿到同一份自包含脚本。
+**发布流程**：改 `VERSION` → 打 tag `v1.2.2` → Actions 跑全量测试、构建 `hermes-vps.sh`、生成 `.sha256` 并创建 Release。用户端只跑 `install.sh`，永远拿到同一份自包含脚本。
 
 | 路径 | 内容 |
 |---|---|
